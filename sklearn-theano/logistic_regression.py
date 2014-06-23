@@ -21,14 +21,20 @@ print("Initial model")
 print(w.get_value(), b.get_value())
 
 learning_rate = 0.01
+reg = .1
 n_iter = 10000
 prob = 1 / (1 + T.exp(-T.dot(x, w) - b))
 pred = prob > 0.5
 loss = -y * T.log(prob) - (1 - y) * T.log(1 - prob)
-#l2
-#penalty = learning_rate * (w ** 2).sum()
-#l1
-penalty = learning_rate * abs(w).sum()
+
+# l2
+# penalty = reg * (w ** 2).sum()
+
+# l1
+penalty = reg * abs(w).sum()
+
+# l0
+# penalty = reg * T.neq(w, 0).sum()
 cost = loss.mean() + penalty
 gw, gb = T.grad(cost, [w, b])
 
