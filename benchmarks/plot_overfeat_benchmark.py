@@ -11,9 +11,12 @@ for i in range(0, 15):
     tf = OverfeatTransformer(output_layers=[i])
     t0 = time.time()
     X_tf = tf.transform(X)
+    print("Shape of layer %i output" % i)
+    print(X_tf.shape)
     t_o = time.time() - t0
     all_times.append(t_o)
     print("Time for layer %i" % i, t_o)
+    print()
 plt.plot(all_times, marker='o')
 plt.title("Runtime for input to layer X")
 plt.xlabel("Layer number")
