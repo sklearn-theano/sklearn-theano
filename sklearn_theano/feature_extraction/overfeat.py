@@ -186,9 +186,11 @@ def _get_fprop(large_network=False, output_layers=[-1]):
 
 class OverfeatTransformer(BaseEstimator, TransformerMixin):
     def __init__(self, large_network=False, output_layers=[-1],
+                 force_reshape=True,
                  transpose_order=(0, 3, 1, 2)):
         self.large_network = large_network
         self.output_layers = output_layers
+        self.force_reshape = force_reshape
         self.transpose_order = transpose_order
         self.transform_function = _get_fprop(self.large_network, output_layers)
 
@@ -197,8 +199,8 @@ class OverfeatTransformer(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X):
-        if len(self.output_layers) == 1:
+        if self.force_reshape:
             return self.transform_function(X.transpose(
-                *self.transpose_order))[0]
+                *self.transpose_order))[0].reshape((len(X), -1))
         else:
             return self.transform_function(X.transpose(*self.transpose_order))
