@@ -4,6 +4,9 @@
 # License: BSD 3 Clause
 
 import os
+import numpy as np
+from PIL import Image
+from sklearn.datasets.base import Bunch
 try:
     import urllib.request as urllib  # for backwards compatibility
 except ImportError:
@@ -55,3 +58,18 @@ def download(url, server_fname, local_fname=None, progress_update_percentage=5):
                                                100. / file_size)
                 print(status)
                 p += progress_update_percentage
+
+
+def load_sample_images():
+    """Load sample images for image manipulation."""
+    module_path = os.path.join(os.path.dirname(__file__), "images")
+    with open(os.path.join(module_path, 'README.txt')) as f:
+        descr = f.read()
+    filenames = [os.path.join(module_path, filename)
+                 for filename in os.listdir(module_path)
+                 if filename.endswith(".jpg")]
+    # Load image data for each image in the source folder.
+    images = [np.array(Image.open(filename, 'r')) for filename in filenames]
+    return Bunch(images=images,
+                 filenames=filenames,
+                 DESCR=descr)

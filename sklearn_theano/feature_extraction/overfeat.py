@@ -10,6 +10,8 @@ import zipfile
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
 
+from .overfeat_class_labels import get_overfeat_class_label
+from .overfeat_class_labels import get_all_overfeat_labels
 from ..datasets import get_dataset_dir, download
 from ..base import (Convolution, MaxPool, PassThrough,
                     Standardize, fuse)
@@ -195,7 +197,7 @@ class OverfeatTransformer(BaseEstimator, TransformerMixin):
         self.transform_function = _get_fprop(self.large_network, output_layers)
 
     def fit(self, X, y=None):
-        """Passthrough."""
+        """Passthrough for scikit-learn pipeline compatibility."""
         return self
 
     def transform(self, X):
@@ -204,3 +206,80 @@ class OverfeatTransformer(BaseEstimator, TransformerMixin):
                 *self.transpose_order))[0].reshape((len(X), -1))
         else:
             return self.transform_function(X.transpose(*self.transpose_order))
+
+
+class OverfeatClassifier(BaseEstimator):
+    def __init__(self, top_n=5, large_network=False, output_strings=True,
+                 transpose_order=(0, 3, 1, 2)):
+        self.top_n = top_n
+        self.large_network = large_network
+        self.output_strings = output_strings
+        self.transpose_order = transpose_order
+        self.transform_function = _get_fprop(self.large_network, [-1])
+
+    def fit(self, X, y=None):
+        """Passthrough for scikit-learn pipeline compatibility."""
+        return self
+
+    def predict(self, X):
+        res = self.transform_function(X.transpose(*self.transpose_order))[0]
+        # Softmax activation
+        res = 1. / (1 + np.exp(res))
+        indices = np.argsort(res, axis=1)[:, :self.top_n, :, :]
+        if self.output_strings:
+            class_strings = np.empty_like(indices,
+                                          dtype=object)
+            for index, value in enumerate(indices.flat):
+                class_strings.flat[index] = get_overfeat_class_label(value)
+            return class_strings
+        else:
+            return indices
+
+
+class OverfeatLocalizer(BaseEstimator):
+    def __init__(self, match_strings, top_n=5, large_network=False,
+                 transpose_order=(2, 0, 1)):
+        self.top_n = top_n
+        self.large_network = large_network
+        if self.large_network:
+            self.min_size = (227, 227)
+        else:
+            self.min_size = (231, 231)
+        self.match_strings = match_strings
+        self.transpose_order = transpose_order
+        self.transform_function = _get_fprop(self.large_network, [-1])
+
+    def fit(self, X, y=None):
+        """Passthrough for scikit-learn pipeline compatibility."""
+        return self
+
+    def predict(self, X):
+        if len(X.shape) != 3:
+            raise ValueError("X must be a 3 dimensional array of "
+                             "(width, height, color).")
+        res = self.transform_function(X.transpose(
+            *self.transpose_order)[None])[0]
+        # Softmax activation
+        res = 1. / (1 + np.exp(res))
+        indices = np.argsort(res, axis=1)[:, :self.top_n, :, :]
+        height = X.shape[0]
+        width = X.shape[1]
+        x_bound = width - self.min_size[0]
+        y_bound = height - self.min_size[1]
+        n_y = indices.shape[2]
+        n_x = indices.shape[3]
+        x_points = np.linspace(0,  x_bound, n_x).astype('int32')
+        y_points = np.linspace(0,  y_bound, n_y).astype('int32')
+        x_points = x_points + self.min_size[0] // 2
+        y_points = y_points + self.min_size[1] // 2
+        xx, yy = np.meshgrid(x_points, y_points)
+        per_window_labels = indices[0]
+        per_window_labels = per_window_labels.reshape(len(per_window_labels),
+                                                      -1)
+        all_matches = []
+        for match_string in self.match_strings:
+            match_index = get_all_overfeat_labels().index(match_string)
+            matches = np.where(per_window_labels == match_index)[1]
+            all_matches.append(np.vstack((xx.flat[matches],
+                                          yy.flat[matches])).T)
+        return all_matches

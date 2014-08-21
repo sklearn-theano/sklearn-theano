@@ -7,7 +7,7 @@ from sklearn.metrics import classification_report, accuracy_score
 import time
 
 asirra = fetch_asirra()
-X = asirra.images
+X = asirra.images.astype('float32')
 y = asirra.target
 X_train, X_test, y_train, y_test = train_test_split(
     X, y, train_size=.8, random_state=1999)

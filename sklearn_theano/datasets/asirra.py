@@ -38,7 +38,7 @@ def _fetch_asirra(partial_path, image_count=1000):
 
     cat_files = sorted(glob(cat_files_path), key=get_file_number)
     dog_files = sorted(glob(dog_files_path), key=get_file_number)
-    X = np.zeros((image_count, 231, 231, 3), dtype='float32')
+    X = np.zeros((image_count, 231, 231, 3), dtype='uint8')
     y = np.zeros(image_count)
     count = 0
     for f in cat_files:
