@@ -3,7 +3,7 @@ from sklearn_theano.feature_extraction import OverfeatTransformer
 import matplotlib.pyplot as plt
 import time
 asirra = fetch_asirra()
-X = asirra.images
+X = asirra.images.astype('float32')
 X = X[0:5]
 y = asirra.target
 all_times = []
