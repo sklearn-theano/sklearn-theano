@@ -13,7 +13,7 @@ num_updates = len(X_tf) // 16
 f, axarr = plt.subplots(4, 4)
 objarr = np.empty_like(axarr)
 for n, ax in enumerate(axarr.flat):
-    objarr.flat[n] = ax.matshow(X_tf[n].reshape(28, 28), cmap='gray')
+    objarr.flat[n] = ax.imshow(X_tf[n].reshape(28, 28), cmap='gray')
     ax.get_xaxis().set_ticks([])
     ax.get_yaxis().set_ticks([])
 plt.show(block=False)
