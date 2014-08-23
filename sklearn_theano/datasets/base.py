@@ -61,7 +61,17 @@ def download(url, server_fname, local_fname=None, progress_update_percentage=5):
 
 
 def load_sample_images():
-    """Load sample images for image manipulation."""
+    """Load sample images for image manipulation.
+    Loads ``sloth``, ``sloth_closeup``, and ``cat and dog``.
+
+    Returns
+    -------
+    data : Bunch
+        Dictionary-like object with the following attributes :
+        'images', the sample images, 'filenames', the file
+        names for the images, and 'DESCR'
+        the full description of the dataset.
+    """
     module_path = os.path.join(os.path.dirname(__file__), "images")
     with open(os.path.join(module_path, 'README.txt')) as f:
         descr = f.read()
@@ -70,6 +80,32 @@ def load_sample_images():
                  if filename.endswith(".jpg")]
     # Load image data for each image in the source folder.
     images = [np.array(Image.open(filename, 'r')) for filename in filenames]
+
     return Bunch(images=images,
                  filenames=filenames,
                  DESCR=descr)
+
+
+def load_sample_image(image_name):
+    """Load the numpy array of a single sample image
+
+    Parameters
+    -----------
+    image_name: {`sloth.jpg`, `sloth_closeup.jpg`, `cat_and_dog.jpg`}
+        The name of the sample image loaded
+
+    Returns
+    -------
+    img: 3D array
+        The image as a numpy array: height x width x color
+
+    """
+    images = load_sample_images()
+    index = None
+    for i, filename in enumerate(images.filenames):
+        if filename.endswith(image_name):
+            index = i
+            break
+    if index is None:
+        raise AttributeError("Cannot find sample image: %s" % image_name)
+    return images.images[index]
