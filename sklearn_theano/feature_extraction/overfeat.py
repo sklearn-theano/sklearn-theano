@@ -187,6 +187,25 @@ def _get_fprop(large_network=False, output_layers=[-1]):
 
 
 class OverfeatTransformer(BaseEstimator, TransformerMixin):
+    """
+    A transformer/feature extractor for images using the OverFeat neural network.
+
+    Parameters
+    ----------
+    large_network : boolean, optional (default=False)
+        Which network to use. If True, the transform will operate over X in
+        windows of 227x227 pixels. Otherwise, these windows will be 231x231.
+
+    output_layers : iterable, optional (default=[-1])
+        Which layers to return. Can be used to retrieve multiple levels of
+        output with a single call to transform.
+
+    force_reshape : boolean, optional (default=True)
+        Whether or not to force the output to be two dimensional. If true,
+        this class can be used as part of a scikit-learn pipeline.
+        force_reshape currently only supports len(output_layers) == 1!
+
+    """
     def __init__(self, large_network=False, output_layers=[-1],
                  force_reshape=True,
                  transpose_order=(0, 3, 1, 2)):
@@ -201,6 +220,26 @@ class OverfeatTransformer(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X):
+        """
+        Transform a set of images.
+
+        Returns the features from each layer.
+
+        Parameters
+        ----------
+        X : array-like, shape = [n_images, height, width, color]
+
+        Returns
+        -------
+        T : array-like, shape = [n_images, n_features]
+
+            If force_reshape = False,
+            list of array-like, length output_layers,
+                                each shape = [n_images, n_windows,
+                                              n_window_features]
+
+            Returns the features extracted for each of the n_images in X..
+        """
         if self.force_reshape:
             return self.transform_function(X.transpose(
                 *self.transpose_order))[0].reshape((len(X), -1))
@@ -209,10 +248,41 @@ class OverfeatTransformer(BaseEstimator, TransformerMixin):
 
 
 class OverfeatClassifier(BaseEstimator):
+    """
+    A classifier for cropped images using the OverFeat neural network.
+
+    If large_network=True, this X will be cropped to the center
+    227x227 pixels. Otherwise, this cropped box will be 231x231.
+
+    Parameters
+    ----------
+    large_network : boolean, optional (default=False)
+        Which network to use. If large_network = True, input will be cropped
+        to the center 227 x 227 pixels. Otherwise, input will be cropped to the
+        center 231 x 231 pixels.
+
+    top_n : integer, optional (default=5)
+        How many classes to return, based on sorted class probabilities.
+
+    output_strings : boolean, optional (default=True)
+        Whether to return class strings or integer classes. Returns class
+        strings by default.
+
+    Attributes
+    ----------
+    crop_bounds_ : tuple, (x_left, x_right, y_lower, y_upper)
+        The coordinate boundaries of the cropping box used.
+
+    """
     def __init__(self, top_n=5, large_network=False, output_strings=True,
                  transpose_order=(0, 3, 1, 2)):
+
         self.top_n = top_n
         self.large_network = large_network
+        if self.large_network:
+            self.min_size = (227, 227)
+        else:
+            self.min_size = (231, 231)
         self.output_strings = output_strings
         self.transpose_order = transpose_order
         self.transform_function = _get_fprop(self.large_network, [-1])
@@ -221,11 +291,66 @@ class OverfeatClassifier(BaseEstimator):
         """Passthrough for scikit-learn pipeline compatibility."""
         return self
 
-    def predict(self, X):
-        res = self.transform_function(X.transpose(*self.transpose_order))[0]
+    def _predict_proba(self, X):
+        if len(X.shape) == 3:
+            x_midpoint = X.shape[0] // 2
+            y_midpoint = X.shape[1] // 2
+        else:
+            x_midpoint = X.shape[1] // 2
+            y_midpoint = X.shape[2] // 2
+
+        x_lower_bound = x_midpoint - self.min_size[0] // 2
+        if x_lower_bound <= 0:
+            x_lower_bound = 0
+        x_upper_bound = x_lower_bound + self.min_size[0]
+        y_lower_bound = y_midpoint - self.min_size[1] // 2
+        if y_lower_bound <= 0:
+            y_lower_bound = 0
+        y_upper_bound = y_lower_bound + self.min_size[1]
+        self.crop_bounds_ = (x_lower_bound, x_upper_bound, y_lower_bound,
+                             y_upper_bound)
+
+        if len(X.shape) == 3:
+            res = self.transform_function(
+                X[None, x_lower_bound:x_upper_bound,
+                  y_lower_bound:y_upper_bound, :].transpose(
+                      *self.transpose_order))[0]
+        else:
+            res = self.transform_function(
+                X[x_lower_bound:x_upper_bound,
+                  y_lower_bound:y_upper_bound, :].transpose(
+                      *self.transpose_order))[0]
         # Softmax activation
-        res = 1. / (1 + np.exp(res))
-        indices = np.argsort(res, axis=1)[:, :self.top_n, :, :]
+        exp_res = np.exp(res - res.max(axis=1))
+        exp_res /= np.sum(exp_res, axis=1)
+        return exp_res
+
+    def predict(self, X):
+        """
+        Classify a set of cropped input images.
+
+        Returns the top_n classes.
+
+        Parameters
+        ----------
+        X : array-like, shape = [n_images, height, width, color]
+                        or
+                        shape = [height, width, color]
+
+        Returns
+        -------
+        T : array-like, shape = [n_images, top_n]
+
+            Returns the top_n classes for each of the n_images in X.
+            If output_strings is True, then the result will be string
+            description of the class label.
+
+            Otherwise, the returned values will be the integer class label.
+        """
+
+        res = self._predict_proba(X)[:, :, 0, 0]
+        indices = np.argsort(res, axis=1)
+        indices = indices[:, -self.top_n:]
         if self.output_strings:
             class_strings = np.empty_like(indices,
                                           dtype=object)
@@ -235,8 +360,51 @@ class OverfeatClassifier(BaseEstimator):
         else:
             return indices
 
+    def predict_proba(self, X):
+        """
+        Prediction probability for a set of cropped input images.
+
+        Returns the top_n probabilities.
+
+        Parameters
+        ----------
+        X : array-like, shape = [n_images, height, width, color]
+                        or
+                        shape = [height, width, color]
+
+        Returns
+        -------
+        T : array-like, shape = [n_images, top_n]
+
+            Returns the top_n probabilities for each of the n_images in X.
+        """
+        res = self._predict_proba(X)[:, :, 0, 0]
+        return np.sort(res, axis=1)[:, -self.top_n:]
+
 
 class OverfeatLocalizer(BaseEstimator):
+    """
+    A localizer for single images using the OverFeat neural network.
+
+    If large_network=True, this X will be cropped to the center
+    227x227 pixels. Otherwise, this box will be 231x231.
+
+    Parameters
+    ----------
+    match_strings : iterable of strings
+        An iterable of class names to match with localizer.
+
+    large_network : boolean, optional (default=False)
+        Which network to use. If True, the transform will operate over X in
+        windows of 227x227 pixels. Otherwise, these windows will be 231x231.
+
+    top_n : integer, optional (default=5)
+        How many classes to return, based on sorted class probabilities.
+
+    output_strings : boolean, optional (default=True)
+        Whether to return class strings or integer classes. Returns class
+        strings by default.
+    """
     def __init__(self, match_strings, top_n=5, large_network=False,
                  transpose_order=(2, 0, 1)):
         self.top_n = top_n
@@ -254,14 +422,39 @@ class OverfeatLocalizer(BaseEstimator):
         return self
 
     def predict(self, X):
+        """
+        Localize an input image.
+
+        Returns the points where the top_n classes contains any of the
+        match_strings.
+
+        Parameters
+        ----------
+        X : array-like, shape = [height, width, color]
+
+        Returns
+        -------
+        T : list of array-likes, each of shape = [n_points, 2]
+
+            For each string in match_strings, points where that string was
+            in the top_n classes. len(T) will be equal to len(match_strings).
+
+            Each array in T is of size n_points x 2, where column 0 is
+            x point coordinate and column 1 is y point coordinate.
+
+            This means that an entry in T can be plotted with
+            plt.scatter(T[i][:, 0], T[i][:, 1])
+        """
         if len(X.shape) != 3:
             raise ValueError("X must be a 3 dimensional array of "
                              "(width, height, color).")
         res = self.transform_function(X.transpose(
             *self.transpose_order)[None])[0]
         # Softmax activation
-        res = 1. / (1 + np.exp(res))
-        indices = np.argsort(res, axis=1)[:, :self.top_n, :, :]
+        exp_res = np.exp(res - res.max(axis=1))
+        exp_res /= np.sum(exp_res, axis=1)
+        indices = np.argsort(exp_res, axis=1)[:, -self.top_n:, :, :]
+
         height = X.shape[0]
         width = X.shape[1]
         x_bound = width - self.min_size[0]

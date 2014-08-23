@@ -1,10 +1,9 @@
 import matplotlib.pyplot as plt
-from sklearn_theano.datasets import load_sample_images
+from sklearn_theano.datasets import load_sample_image
 from sklearn_theano.feature_extraction import OverfeatLocalizer
 from sklearn_theano.feature_extraction import get_all_overfeat_labels
 
-s = load_sample_images()
-X = s.images[1]
+X = load_sample_image("cat_and_dog.jpg")
 dog_label = [label for label in get_all_overfeat_labels()
              if 'dog' in label][0]
 cat_label = [label for label in get_all_overfeat_labels()
