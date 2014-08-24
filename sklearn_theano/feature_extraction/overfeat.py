@@ -12,6 +12,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 
 from .overfeat_class_labels import get_overfeat_class_label
 from .overfeat_class_labels import get_all_overfeat_labels
+from .overfeat_class_labels import get_all_overfeat_leaves
 from ..datasets import get_dataset_dir, download
 from ..base import (Convolution, MaxPool, PassThrough,
                     Standardize, fuse)
@@ -293,11 +294,11 @@ class OverfeatClassifier(BaseEstimator):
 
     def _predict_proba(self, X):
         if len(X.shape) == 3:
-            x_midpoint = X.shape[0] // 2
-            y_midpoint = X.shape[1] // 2
-        else:
             x_midpoint = X.shape[1] // 2
-            y_midpoint = X.shape[2] // 2
+            y_midpoint = X.shape[0] // 2
+        else:
+            x_midpoint = X.shape[2] // 2
+            y_midpoint = X.shape[1] // 2
 
         x_lower_bound = x_midpoint - self.min_size[0] // 2
         if x_lower_bound <= 0:
@@ -312,13 +313,13 @@ class OverfeatClassifier(BaseEstimator):
 
         if len(X.shape) == 3:
             res = self.transform_function(
-                X[None, x_lower_bound:x_upper_bound,
-                  y_lower_bound:y_upper_bound, :].transpose(
+                X[None, y_lower_bound:y_upper_bound,
+                  x_lower_bound:x_upper_bound, :].transpose(
                       *self.transpose_order))[0]
         else:
             res = self.transform_function(
-                X[x_lower_bound:x_upper_bound,
-                  y_lower_bound:y_upper_bound, :].transpose(
+                X[y_lower_bound:y_upper_bound,
+                  x_lower_bound:x_upper_bound, :].transpose(
                       *self.transpose_order))[0]
         # Softmax activation
         exp_res = np.exp(res - res.max(axis=1))
@@ -392,7 +393,10 @@ class OverfeatLocalizer(BaseEstimator):
     Parameters
     ----------
     match_strings : iterable of strings
-        An iterable of class names to match with localizer.
+        An iterable of class names to match with localizer. Can be a full
+        ImageNet class string or a WordNet leaf such as 'dog.n.01'. If the
+        pattern '.n.' is found in the match string, it will be treated as a
+        WordNet leaf, otherwise the string is assumed to be a class label.
 
     large_network : boolean, optional (default=False)
         Which network to use. If True, the transform will operate over X in
@@ -470,9 +474,25 @@ class OverfeatLocalizer(BaseEstimator):
         per_window_labels = per_window_labels.reshape(len(per_window_labels),
                                                       -1)
         all_matches = []
+        overfeat_leaves = get_all_overfeat_leaves()
         for match_string in self.match_strings:
-            match_index = get_all_overfeat_labels().index(match_string)
-            matches = np.where(per_window_labels == match_index)[1]
-            all_matches.append(np.vstack((xx.flat[matches],
-                                          yy.flat[matches])).T)
+            if '.n.' in match_string:
+                # We were provided a wordnet category and must conglomerate
+                # points
+                all_match_labels = overfeat_leaves[match_string]
+                overfeat_labels = get_all_overfeat_labels()
+                match_indices = np.array(([overfeat_labels.index(s)
+                                           for s in all_match_labels]))
+                match_indices = np.unique(match_indices)
+                matches = np.where(
+                    np.in1d(per_window_labels, match_indices).reshape(
+                        per_window_labels.shape) == True)[1]
+                all_matches.append(np.vstack((xx.flat[matches],
+                                              yy.flat[matches])).T)
+            else:
+                # Asssume this is an OverFeat class
+                match_index = get_all_overfeat_labels().index(match_string)
+                matches = np.where(per_window_labels == match_index)[1]
+                all_matches.append(np.vstack((xx.flat[matches],
+                                              yy.flat[matches])).T)
         return all_matches

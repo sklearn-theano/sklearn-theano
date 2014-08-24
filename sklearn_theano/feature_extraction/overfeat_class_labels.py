@@ -1,3 +1,6 @@
+import os
+import json
+
 _class_names = ["kit fox, Vulpes macrotis",
                 "English setter",
                 "Siberian husky",
@@ -998,6 +1001,13 @@ _class_names = ["kit fox, Vulpes macrotis",
                 "stole",
                 "carbonara",
                 "dumbbell"]
+
+
+def get_all_overfeat_leaves():
+    module_path = os.path.join(os.path.dirname(__file__))
+    with open(os.path.join(module_path, 'overfeat_leaves.json')) as f:
+        data = json.loads(f.read())
+    return data
 
 
 def get_all_overfeat_labels():
