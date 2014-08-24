@@ -14,7 +14,7 @@ prediction_probs = clf.predict_proba(X.astype('float32'))
 crop_width = clf.crop_bounds_[1] - clf.crop_bounds_[0]
 crop_height = clf.crop_bounds_[3] - clf.crop_bounds_[2]
 crop_box = Rectangle((clf.crop_bounds_[0], clf.crop_bounds_[2]), crop_width, crop_height,
-                     fc='darkred', alpha=.35)
+                     fc='darkred', ec='darkred', alpha=.35)
 f, axarr = plt.subplots(2, 1)
 plt.suptitle("Top %i classification and cropping box" % top_n_classes)
 axarr[0].imshow(X)
