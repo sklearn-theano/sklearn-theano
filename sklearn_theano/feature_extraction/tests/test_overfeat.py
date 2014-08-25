@@ -56,8 +56,6 @@ def test_theano_overfeat_against_binary():
     image = lena()
 
     for net_size, correspondence in layer_correspondence.items():
-        if net_size != 'large':
-            continue
         for theano_layer, binary_layer, cropping in correspondence:
             _check_overfeat_layer(image, theano_layer, binary_layer,
                                   net_size == 'large', cropping=cropping)
