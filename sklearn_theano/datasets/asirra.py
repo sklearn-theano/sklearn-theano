@@ -71,7 +71,7 @@ def fetch_asirra(image_count=1000):
     partial_path = check_fetch_asirra()
     m = Memory(cachedir=partial_path, compress=6, verbose=0)
     load_func = m.cache(_fetch_asirra)
-    images, target = load_func(partial_path, image_count=1000)
+    images, target = load_func(partial_path, image_count=image_count)
     return Bunch(data=images.reshape(len(images), -1),
                  images=images, target=target,
                  DESCR="Asirra cats and dogs dataset")
