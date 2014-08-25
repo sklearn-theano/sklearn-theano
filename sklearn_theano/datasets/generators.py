@@ -63,5 +63,5 @@ def _get_mnist_fprop(output_layers=[-1]):
 def fetch_mnist_generated(n_samples=1000, random_state=None):
     rng = check_random_state(random_state)
     generator_func = _get_mnist_fprop()
-    X = 2 * np.sqrt(3) * rng.randn(n_samples, 100).astype('float32') - np.sqrt(3)
+    X = 2 * np.sqrt(3) * rng.rand(n_samples, 100).astype('float32') - np.sqrt(3)
     return generator_func(X)[0]
