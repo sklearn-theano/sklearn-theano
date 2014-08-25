@@ -82,6 +82,16 @@ class Convolution(object):
         else:
             self.convolution_filter_ = cf
 
+        biases = self.biases
+        if biases is not None:
+            if not isinstance(biases, T.sharedvar.TensorSharedVariable):
+                if isinstance(biases, np.ndarray):
+                    self.biases_ = theano.shared(biases)
+                else:
+                    raise ValueError("Variable type not understood")
+            else:
+                self.biases_ = biases
+
         self.input_ = T.tensor4(dtype=self.input_dtype)
         c = self.cropping_
         self.expression_ = T.nnet.conv2d(self.input_,
@@ -89,6 +99,8 @@ class Convolution(object):
             border_mode=self.border_mode,
             subsample=self.subsample_)[:, :, c[0][0]:c[0][1],
                                              c[1][0]:c[1][1]]
+        if self.biases is not None:
+            self.expression_ += self.biases_.dimshuffle('x', 0, 'x', 'x')
         self.expression_ = self.activation_function(self.expression_)
 
 
@@ -133,7 +145,8 @@ class MaxPool(object):
 
     def _build_expression(self):
         self.input_ = T.tensor4(dtype=self.input_dtype)
-        self.expression_ = max_pool_2d(self.input_, self.max_pool_stride)
+        self.expression_ = max_pool_2d(self.input_, self.max_pool_stride,
+                                       ignore_border=True)
 
 
 def fuse(building_blocks, fuse_dim=4, input_variables=None, entry_expression=None,
