@@ -105,25 +105,21 @@ def _get_architecture(large_network=False, weights_and_biases=None):
             Convolution(ws[1], bs[1], activation='relu'),
             MaxPool((2, 2)),
 
-            PassThrough(),  # Torch does spatial padding here
             Convolution(ws[2], bs[2],
                         activation='relu',
                         cropping=[(1, -1), (1, -1)],
                         border_mode='full'),
 
-            PassThrough(),  # Torch does spatial padding
             Convolution(ws[3], bs[3],
                         activation='relu',
                         cropping=[(1, -1), (1, -1)],
                         border_mode='full'),
 
-            PassThrough(),  # Torch does spatial padding
             Convolution(ws[4], bs[4],
                         activation='relu',
                         cropping=[(1, -1), (1, -1)],
                         border_mode='full'),
 
-            PassThrough(),  # Torch does spatial padding
             Convolution(ws[5], bs[5],
                         activation='relu',
                         cropping=[(1, -1), (1, -1)],
@@ -149,19 +145,16 @@ def _get_architecture(large_network=False, weights_and_biases=None):
             Convolution(ws[1], bs[1], activation='relu'),
             MaxPool((2, 2)),
 
-            PassThrough(),  # Torch does spatial padding here
             Convolution(ws[2], bs[2],
                         activation='relu',
                         cropping=[(1, -1), (1, -1)],
                         border_mode='full'),
 
-            PassThrough(),  # Torch does spatial padding
             Convolution(ws[3], bs[3],
                         activation='relu',
                         cropping=[(1, -1), (1, -1)],
                         border_mode='full'),
 
-            PassThrough(),  # Torch does spatial padding
             Convolution(ws[4], bs[4],
                         activation='relu',
                         cropping=[(1, -1), (1, -1)],
