@@ -4,7 +4,7 @@ from numpy.testing import assert_array_almost_equal
 import numpy as np
 import theano
 from scipy.signal import convolve2d
-from ..base import Convolution, PassThrough, MaxPool, ZeroPad, fuse
+from ..base import Convolution, PassThrough, MaxPool, ZeroPad, Relu, fuse
 
 
 def test_convolution():
@@ -89,3 +89,20 @@ def test_zero_pad():
     padded = pad_func(np.array([arr] * 2)[:, np.newaxis])[0]
 
     assert_array_almost_equal(padded, padded_arrs)
+
+
+def test_relu():
+
+    arr = np.arange(-12, 13).reshape(5, 5).astype(np.float32)
+
+    expressions, input_variable = fuse([Relu()])
+    relu_func = theano.function([input_variable], expressions)
+    arr = arr[np.newaxis, np.newaxis]
+
+    arr2 = arr.copy()
+    arr2[arr2 <= 0] = 0
+
+    thresholded = relu_func(arr)[0]
+
+    assert_array_almost_equal(thresholded, arr2)
+

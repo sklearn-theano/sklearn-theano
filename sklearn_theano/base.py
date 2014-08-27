@@ -190,6 +190,17 @@ class ZeroPad(object):
             self.padding_indicator_, border_mode='full')
 
 
+class Relu(object):
+    def __init__(self, input_type=T.tensor4):
+        self.input_type = input_type
+
+        self._build_expression()
+
+    def _build_expression(self):
+        self.input_ = self.input_type()
+        self.expression_ = T.maximum(self.input_, 0)
+
+
 def fuse(building_blocks, fuse_dim=4, input_variables=None, entry_expression=None,
          output_expressions=-1, input_dtype='float32'):
 
