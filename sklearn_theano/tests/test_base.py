@@ -4,7 +4,7 @@ from numpy.testing import assert_array_almost_equal
 import numpy as np
 import theano
 from scipy.signal import convolve2d
-from ..base import Convolution, PassThrough, MaxPool, fuse
+from ..base import Convolution, PassThrough, MaxPool, ZeroPad, fuse
 
 
 def test_convolution():
@@ -71,3 +71,21 @@ def test_fuse():
     assert_array_almost_equal(results[0], rectified[:, np.newaxis])
     assert_array_almost_equal(results[1], rectified[:, np.newaxis])
     assert_array_almost_equal(results[2], max_pooled[:, np.newaxis])
+
+
+def test_zero_pad():
+
+    arr = np.arange(12).astype(np.float32).reshape(3, 4)
+    padding = (1, 2, 3, 4)
+    padded_arr = np.zeros((arr.shape[0] + padding[0] + padding[2],
+                           arr.shape[1] + padding[1] + padding[3]))
+    padded_arr[padding[0]:-padding[2], padding[1]:-padding[3]] = arr
+
+    padded_arrs = np.array([padded_arr] * 2)[:, np.newaxis]
+
+    expressions, input_variable = fuse([ZeroPad(padding=padding)])
+    pad_func = theano.function([input_variable], expressions)
+
+    padded = pad_func(np.array([arr] * 2)[:, np.newaxis])[0]
+
+    assert_array_almost_equal(padded, padded_arrs)

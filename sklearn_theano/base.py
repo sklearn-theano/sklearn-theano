@@ -150,6 +150,46 @@ class MaxPool(object):
                                        ignore_border=True)
 
 
+class ZeroPad(object):
+    """Zero-padding using a convolution with an appropriate padded Dirac.
+    Any input welcome as to how to make this more simple."""
+
+    def __init__(self, padding=1, input_dtype='float32'):
+        self.padding = padding
+        self.input_dtype = input_dtype
+
+        self._build_expression()
+
+    def _build_expression(self):
+        if isinstance(self.padding, numbers.Number):
+            self.padding_ = (self.padding,) * 4
+        elif len(self.padding) == 1:
+            self.padding_ = tuple(self.padding) * 4
+        elif len(self.padding) == 2:
+            self.padding_ = tuple(self.padding) * 2
+        elif len(self.padding) == 4:
+            self.padding_ = self.padding
+        else:
+            raise ValueError("padding must be of length 1, 2 or 4")
+
+        p = self.padding_
+        shape = (p[0] + 1 + p[2], p[1] + 1 + p[3])
+
+        padding_indicator = np.zeros(shape, dtype=np.dtype(self.input_dtype))
+        padding_indicator[p[0], p[1]] = 1.
+        self.padding_indicator_ = theano.shared(
+            padding_indicator[np.newaxis, np.newaxis])
+        self.input_ = T.tensor4(dtype=self.input_dtype)
+        input_shape = self.input_.shape
+        output_shape = (input_shape[0], input_shape[1],
+                        input_shape[2] + p[0] + p[2],
+                        input_shape[3] + p[1] + p[3])
+        intermediate_shape = (-1, 1, input_shape[2], input_shape[3])
+        self.expression_ = T.nnet.conv2d(
+            self.input_.reshape(intermediate_shape),
+            self.padding_indicator_, border_mode='full')
+
+
 def fuse(building_blocks, fuse_dim=4, input_variables=None, entry_expression=None,
          output_expressions=-1, input_dtype='float32'):
 
