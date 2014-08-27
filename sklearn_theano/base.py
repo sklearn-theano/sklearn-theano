@@ -188,7 +188,8 @@ class ZeroPad(object):
         intermediate_shape = (-1, 1, input_shape[2], input_shape[3])
         self.expression_ = T.nnet.conv2d(
             self.input_.reshape(intermediate_shape),
-            self.padding_indicator_, border_mode='full')
+            self.padding_indicator_,
+            border_mode='full').reshape(output_shape)
 
 
 class Relu(object):

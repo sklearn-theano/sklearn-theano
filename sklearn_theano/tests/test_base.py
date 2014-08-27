@@ -83,7 +83,8 @@ def test_zero_pad():
 
     padded_arrs = np.array([padded_arr] * 2)[:, np.newaxis]
 
-    expressions, input_variable = fuse([ZeroPad(padding=padding)])
+    zp = ZeroPad(padding=padding)
+    expressions, input_variable = fuse([zp])
     pad_func = theano.function([input_variable], expressions)
 
     padded = pad_func(np.array([arr] * 2)[:, np.newaxis])[0]
