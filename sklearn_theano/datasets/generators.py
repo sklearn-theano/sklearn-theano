@@ -61,6 +61,26 @@ def _get_mnist_fprop(output_layers=[-1]):
 
 
 def fetch_mnist_generated(n_samples=1000, random_state=None):
+    """
+    Generated MNIST digits based on the paper:
+
+    I. Goodfellow, J. Pouget-Abadie, M. Mirza, B. Xu, D. Warde-Farley, S. Ozair,
+    A. Courville, Y. Bengio. Generative Adversarial Networks, June 2014.
+
+    Parameters
+    ----------
+    n_samples : positive integer
+
+    random_state : positive integer or None, default None
+
+    Returns
+    -------
+    X : array-like, shape = [n_samples, 28, 28]
+
+        Returns a number of images from the generative network, based on random
+        input.
+
+    """
     rng = check_random_state(random_state)
     generator_func = _get_mnist_fprop()
     X = 2 * np.sqrt(3) * rng.rand(n_samples, 100).astype('float32') - np.sqrt(3)

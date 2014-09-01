@@ -62,7 +62,7 @@ def download(url, server_fname, local_fname=None, progress_update_percentage=5):
 
 def load_sample_images():
     """Load sample images for image manipulation.
-    Loads ``sloth``, ``sloth_closeup``, and ``cat and dog``.
+    Loads ``sloth``, ``sloth_closeup``, and ``cat_and_dog``.
 
     Returns
     -------

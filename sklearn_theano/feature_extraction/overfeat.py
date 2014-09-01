@@ -9,13 +9,12 @@ theano.config.floatX = 'float32'
 import zipfile
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
-
 from .overfeat_class_labels import get_overfeat_class_label
 from .overfeat_class_labels import get_all_overfeat_labels
 from .overfeat_class_labels import get_all_overfeat_leaves
 from ..datasets import get_dataset_dir, download
-from ..base import (Convolution, MaxPool, PassThrough,
-                    Standardize, fuse)
+from ..base import (Convolution, MaxPool, Standardize, fuse)
+from ..utils import check_tensor
 
 
 # better get it from a config file
@@ -188,7 +187,7 @@ class OverfeatTransformer(BaseEstimator, TransformerMixin):
     ----------
     large_network : boolean, optional (default=False)
         Which network to use. If True, the transform will operate over X in
-        windows of 227x227 pixels. Otherwise, these windows will be 231x231.
+        windows of 221x221 pixels. Otherwise, these windows will be 231x231.
 
     output_layers : iterable, optional (default=[-1])
         Which layers to return. Can be used to retrieve multiple levels of
@@ -222,6 +221,8 @@ class OverfeatTransformer(BaseEstimator, TransformerMixin):
         Parameters
         ----------
         X : array-like, shape = [n_images, height, width, color]
+                        or
+                        shape = [height, width, color]
 
         Returns
         -------
@@ -234,6 +235,7 @@ class OverfeatTransformer(BaseEstimator, TransformerMixin):
 
             Returns the features extracted for each of the n_images in X..
         """
+        X = check_tensor(X, dtype=np.float32, n_dim=4)
         if self.force_reshape:
             return self.transform_function(X.transpose(
                 *self.transpose_order))[0].reshape((len(X), -1))
@@ -246,13 +248,13 @@ class OverfeatClassifier(BaseEstimator):
     A classifier for cropped images using the OverFeat neural network.
 
     If large_network=True, this X will be cropped to the center
-    227x227 pixels. Otherwise, this cropped box will be 231x231.
+    221x221 pixels. Otherwise, this cropped box will be 231x231.
 
     Parameters
     ----------
     large_network : boolean, optional (default=False)
         Which network to use. If large_network = True, input will be cropped
-        to the center 227 x 227 pixels. Otherwise, input will be cropped to the
+        to the center 221 x 221 pixels. Otherwise, input will be cropped to the
         center 231 x 231 pixels.
 
     top_n : integer, optional (default=5)
@@ -274,7 +276,7 @@ class OverfeatClassifier(BaseEstimator):
         self.top_n = top_n
         self.large_network = large_network
         if self.large_network:
-            self.min_size = (227, 227)
+            self.min_size = (221, 221)
         else:
             self.min_size = (231, 231)
         self.output_strings = output_strings
@@ -286,12 +288,8 @@ class OverfeatClassifier(BaseEstimator):
         return self
 
     def _predict_proba(self, X):
-        if len(X.shape) == 3:
-            x_midpoint = X.shape[1] // 2
-            y_midpoint = X.shape[0] // 2
-        else:
-            x_midpoint = X.shape[2] // 2
-            y_midpoint = X.shape[1] // 2
+        x_midpoint = X.shape[2] // 2
+        y_midpoint = X.shape[1] // 2
 
         x_lower_bound = x_midpoint - self.min_size[0] // 2
         if x_lower_bound <= 0:
@@ -304,16 +302,10 @@ class OverfeatClassifier(BaseEstimator):
         self.crop_bounds_ = (x_lower_bound, x_upper_bound, y_lower_bound,
                              y_upper_bound)
 
-        if len(X.shape) == 3:
-            res = self.transform_function(
-                X[None, y_lower_bound:y_upper_bound,
-                  x_lower_bound:x_upper_bound, :].transpose(
-                      *self.transpose_order))[0]
-        else:
-            res = self.transform_function(
-                X[y_lower_bound:y_upper_bound,
-                  x_lower_bound:x_upper_bound, :].transpose(
-                      *self.transpose_order))[0]
+        res = self.transform_function(
+            X[:, y_lower_bound:y_upper_bound,
+                x_lower_bound:x_upper_bound, :].transpose(
+                    *self.transpose_order))[0]
         # Softmax activation
         exp_res = np.exp(res - res.max(axis=1))
         exp_res /= np.sum(exp_res, axis=1)
@@ -341,7 +333,7 @@ class OverfeatClassifier(BaseEstimator):
 
             Otherwise, the returned values will be the integer class label.
         """
-
+        X = check_tensor(X, dtype=np.float32, n_dim=4)
         res = self._predict_proba(X)[:, :, 0, 0]
         indices = np.argsort(res, axis=1)
         indices = indices[:, -self.top_n:]
@@ -372,6 +364,7 @@ class OverfeatClassifier(BaseEstimator):
 
             Returns the top_n probabilities for each of the n_images in X.
         """
+        X = check_tensor(X, dtype=np.float32, n_dim=4)
         res = self._predict_proba(X)[:, :, 0, 0]
         return np.sort(res, axis=1)[:, -self.top_n:]
 
@@ -381,7 +374,7 @@ class OverfeatLocalizer(BaseEstimator):
     A localizer for single images using the OverFeat neural network.
 
     If large_network=True, this X will be cropped to the center
-    227x227 pixels. Otherwise, this box will be 231x231.
+    221x221 pixels. Otherwise, this box will be 231x231.
 
     Parameters
     ----------
@@ -393,7 +386,7 @@ class OverfeatLocalizer(BaseEstimator):
 
     large_network : boolean, optional (default=False)
         Which network to use. If True, the transform will operate over X in
-        windows of 227x227 pixels. Otherwise, these windows will be 231x231.
+        windows of 221x221 pixels. Otherwise, these windows will be 231x231.
 
     top_n : integer, optional (default=5)
         How many classes to return, based on sorted class probabilities.
@@ -407,7 +400,7 @@ class OverfeatLocalizer(BaseEstimator):
         self.top_n = top_n
         self.large_network = large_network
         if self.large_network:
-            self.min_size = (227, 227)
+            self.min_size = (221, 221)
         else:
             self.min_size = (231, 231)
         self.match_strings = match_strings
@@ -442,9 +435,7 @@ class OverfeatLocalizer(BaseEstimator):
             This means that an entry in T can be plotted with
             plt.scatter(T[i][:, 0], T[i][:, 1])
         """
-        if len(X.shape) != 3:
-            raise ValueError("X must be a 3 dimensional array of "
-                             "(width, height, color).")
+        X = check_tensor(X, dtype=np.float32, n_dim=3)
         res = self.transform_function(X.transpose(
             *self.transpose_order)[None])[0]
         # Softmax activation

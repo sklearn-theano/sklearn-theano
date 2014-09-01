@@ -1,3 +1,20 @@
+"""
+=======================================================
+Generative networks for random MNIST digits
+=======================================================
+
+This demo of an MNIST generator is based on the work of
+I. Goodfellow, J. Pouget-Abadie, M. Mirza, B. Xu, D. Warde-Farley, S. Ozair,
+A. Courville, Y.Bengio. *Generative Adversarial Networks*, June 2014.
+
+The generators trained as part of the published experiment have been wrapped in
+sklearn-theano, and can easily be used to fetch an arbitrary number of plausible
+MNIST digits.
+
+Additionally, this example also shows how to make an automatically updating plot
+with the 'TkAgg' backend to matplotlib.
+
+"""
 import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
@@ -23,5 +40,6 @@ for i in range(num_updates):
         obj.set_data(X_tf[i * len(objarr.flat) + n].reshape(28, 28))
     plt.draw()
     time.sleep(.08)
-    print("Iteration %i" % i)
+    if (i % 20) == 0:
+        print("Iteration %i" % i)
 plt.show()

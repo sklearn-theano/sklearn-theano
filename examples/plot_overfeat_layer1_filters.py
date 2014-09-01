@@ -1,3 +1,14 @@
+"""
+====================================
+Visualization of first layer filters
+====================================
+
+The first layers of convolutional neural networks often have very "human
+interpretable" values, as seen in these example plots. Visually, these filters
+are similar to other filters used in computer vision, such as Gabor filters.
+
+"""
+print(__doc__)
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn_theano.feature_extraction import fetch_overfeat_weights_and_biases
@@ -21,18 +32,19 @@ def make_mosaic(layer_weights):
     return lw
 
 
-def plot_filters(layer_weights, title="Filters", show=False):
+def plot_filters(layer_weights, title=None, show=False):
     mosaic = make_mosaic(layer_weights)
     plt.imshow(mosaic, interpolation='nearest')
     ax = plt.gca()
     ax.xaxis.set_visible(False)
     ax.yaxis.set_visible(False)
-    plt.title(title)
+    if title is not None:
+        plt.title(title)
     if show:
         plt.show()
 
 weights, biases = fetch_overfeat_weights_and_biases(large_network=True)
-plot_filters(weights[0], title="'Accurate' Network Filters")
+plot_filters(weights[0])
 weights, biases = fetch_overfeat_weights_and_biases(large_network=False)
 plt.figure()
-plot_filters(weights[0], title="'Fast' Network Filters", show=True)
+plot_filters(weights[0])
