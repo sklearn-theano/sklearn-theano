@@ -68,6 +68,20 @@ def _fetch_asirra(partial_path, image_count=1000):
 
 
 def fetch_asirra(image_count=1000):
+    """
+
+    Parameters
+    ----------
+    image_count : positive integer
+
+    Returns
+    -------
+    data : Bunch
+        Dictionary-like object with the following attributes :
+        'images', the sample images, 'data', the flattened images,
+        'target', the label for the image (0 for cat, 1 for dog),
+        and 'DESCR' the full description of the dataset.
+    """
     partial_path = check_fetch_asirra()
     m = Memory(cachedir=partial_path, compress=6, verbose=0)
     load_func = m.cache(_fetch_asirra)

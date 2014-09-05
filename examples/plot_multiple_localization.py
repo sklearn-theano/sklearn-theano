@@ -1,3 +1,32 @@
+"""
+=======================================
+Localizing multiple objects in an image
+=======================================
+
+Extending on the ``plot_localization_tutorial`` example, there are more advanced
+ways to search for objects, and draw bounding boxes.
+
+Rather than using the full class label, we can also use the wordnet hierarchy to
+describe groups of labels which apply. In this case the high level labels
+'cat' and 'dog' are used to search through the image. By specifying 'cat.n.01',
+the OverfeatLocalizer will use class tags which fall into the group of
+'cat.n.01' based on the WordNet hierarchy. Dogs work the same same way, using
+'dog.n.01'.
+
+By allowing specification of higher level groupings, it is easier
+to search for a variety of subjects, but may lead to confusion when drawing
+bounding boxes if the subjects both fall under the same WordNet group, but are
+not the same class. Imagine an image of two different species cats -
+in this case the exact class labels may be better at creating bounding boxes.
+
+It is also beneficial to use scikit-learn's Gaussian Mixture Models to
+better estimate bounding boxes without the influence of outliers. In this case,
+one Gaussian will be placed to try and describe all of the matched points. Using
+a width and height bound of 3 standard deviations, it is possible to draw
+bounding boxes which are more robust to spurious points than the simple
+method used in ``plot_single_localization``.
+
+"""
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
@@ -21,12 +50,11 @@ dog_label = 'dog.n.01'
 cat_label = 'cat.n.01'
 clf = OverfeatLocalizer(top_n=1,
                         match_strings=[dog_label, cat_label])
-points = clf.predict(X.astype('float32'))
+points = clf.predict(X)
 dog_points = points[0]
 cat_points = points[1]
 
 plt.imshow(X)
-plt.title("Cat and dog localization")
 ax = plt.gca()
 ax.autoscale(enable=False)
 clf = GMM()
