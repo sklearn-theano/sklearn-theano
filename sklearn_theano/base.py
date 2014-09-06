@@ -18,6 +18,7 @@ def _identity(x):
 
 ACTIVATIONS = {'sigmoid': T.nnet.sigmoid,
                'identity': _identity,
+               'linear': _identity,
                'relu': _relu}
 
 
