@@ -19,7 +19,7 @@ def _identity(x):
 ACTIVATIONS = {'sigmoid': T.nnet.sigmoid,
                'identity': _identity,
                'linear': _identity,
-               'relu': _relu,}
+               'relu': _relu,
                None: _identity}
 
 
@@ -104,6 +104,72 @@ class Convolution(object):
         if self.biases is not None:
             self.expression_ += self.biases_.dimshuffle('x', 0, 'x', 'x')
         self.expression_ = self.activation_function(self.expression_)
+
+
+class MarginalConvolution(object):
+    """Same as Convolution if there is only one input channel. If there are
+    several input channels, then it convolves each with the same filter,
+    instead of using a 3D filter as does Convolution.
+    Used for scattering transform.
+    And for global smoothing.
+    """
+    def __init__(self,
+                 convolution_filter,
+                 activation=None,
+                 border_mode='valid',
+                 subsample=None,
+                 cropping=None,
+                 input_dtype='float32'):
+        self.convolution_filter = convolution_filter
+        self.activation = activation
+        self.border_mode = border_mode
+        self.subsample = subsample
+        self.input_dtype = input_dtype
+
+        self._build_expression()
+
+    def _build_expression(self):
+
+        if self.subsample is None:
+            self.subsample_ = (1, 1)
+        else:
+            self.subsample_ = self.subsample
+
+        cf = self.convolution_filter
+        if not isinstance(cf, T.sharedvar.TensorSharedVariable):
+            if isinstance(cf, np.ndarray):
+                self.convolution_filter_ = theano.shared(cf)
+            else:
+                raise ValueError("Variable type not understood")
+        else:
+            self.convolution_filter_ = cf
+
+        self.input_ = T.tensor4(dtype=self.input_dtype)
+        self.expression_ = T.nnet.conv2d(
+            self.input_.reshape((-1, 1,
+                                  self.input_.shape[-2],
+                                  self.input_.shape[-1])),
+            self.convolution_filter_.reshape((-1, 1,
+                                  self.convolution_filter_.shape[-2],
+                                  self.convolution_filter_.shape[-1])),
+            border_mode=self.border_mode,
+            subsample=self.subsample_)
+        if self.border_mode == 'valid':
+            output_shape = (
+                self.input_.shape[-2] -
+                self.convolution_filter_.shape[-2] + 1,
+                self.input_.shape[-1] -
+                self.convolution_filter_.shape[-1] + 1)
+        elif self.border_mode == 'full':
+            output_shape = (
+                self.input_.shape[-2] +
+                self.convolution_filter_.shape[-2] - 1,
+                self.input_.shape[-1] +
+                self.convolution_filter_.shape[-1] - 1)
+        self.expression_ = self.expression_.reshape(
+            (self.input_.shape[0], -1) + output_shape)
+        activation_function = ACTIVATIONS[self.activation]
+        self.expression_ = activation_function(self.expression_)
 
 
 class PassThrough(object):

@@ -1,10 +1,9 @@
 from numpy.testing import assert_array_almost_equal
-
-
 import numpy as np
 import theano
 from scipy.signal import convolve2d
-from ..base import Convolution, PassThrough, MaxPool, ZeroPad, Relu, fuse
+from ..base import (Convolution, PassThrough, MaxPool, ZeroPad,
+                    Relu, fuse, MarginalConvolution)
 
 
 def test_convolution():
@@ -15,9 +14,10 @@ def test_convolution():
 
     for border_mode in ['full', 'valid']:
         for cropping in [None, [(1, -1), (1, -1)]]:
-            conv = Convolution(convolution_filter[np.newaxis, np.newaxis],
-                               border_mode=border_mode,
-                               cropping=cropping)
+            conv = Convolution(
+                convolution_filter[np.newaxis, np.newaxis],
+                border_mode=border_mode,
+                cropping=cropping)
             conv_func = theano.function([conv.input_],
                                         conv.expression_)
 
@@ -32,6 +32,31 @@ def test_convolution():
                     for img in images])
 
             assert_array_almost_equal(convolved, convolutions[:, np.newaxis])
+
+
+def test_marginal_convolution():
+    rng = np.random.RandomState(42)
+    convolution_filters = rng.randn(6, 4, 5).astype(np.float32)
+    images = np.arange(
+        3 * 2 * 10 * 10).reshape(3, 2, 10, 10).astype(np.float32)
+
+    for border_mode in ['full', 'valid']:
+        conv = MarginalConvolution(convolution_filters,
+                                   border_mode=border_mode,
+                                   activation=None)
+        conv_func = theano.function([conv.input_],
+                                    conv.expression_)
+        convolved = conv_func(images)
+        convolutions = np.array([
+                [[convolve2d(img, convolution_filter,
+                             mode=border_mode)
+                  for convolution_filter in convolution_filters]
+                 for img in imgs]
+                for imgs in images])
+        convolutions = convolutions.reshape(images.shape[0], -1,
+                                            convolutions.shape[-2],
+                                            convolutions.shape[-1])
+        assert_array_almost_equal(convolved, convolutions, decimal=3)
 
 
 def test_fuse():
