@@ -13,7 +13,8 @@ from .overfeat_class_labels import get_overfeat_class_label
 from .overfeat_class_labels import get_all_overfeat_labels
 from .overfeat_class_labels import get_all_overfeat_leaves
 from ..datasets import get_dataset_dir, download
-from ..base import (Convolution, MaxPool, Standardize, fuse)
+from ..base import (Convolution, MaxPool, PassThrough,
+                    Standardize, ZeroPad, Relu, fuse)
 from ..utils import check_tensor
 
 
@@ -83,7 +84,8 @@ def fetch_overfeat_weights_and_biases(large_network=False, weights_file=None):
     return weights, biases
 
 
-def _get_architecture(large_network=False, weights_and_biases=None):
+def _get_architecture(large_network=False, weights_and_biases=None,
+                      detailed=False):
     if weights_and_biases is None:
         weights_and_biases = fetch_overfeat_weights_and_biases(large_network)
 
@@ -93,7 +95,7 @@ def _get_architecture(large_network=False, weights_and_biases=None):
     ws = [w[:, :, ::-1, ::-1] for w in weights]
     bs = biases
 
-    if large_network:
+    if large_network and not detailed:
         architecture = [
             Standardize(118.380948, 61.896913),
 
@@ -133,7 +135,7 @@ def _get_architecture(large_network=False, weights_and_biases=None):
 
             Convolution(ws[8], bs[8],
                         activation='identity')]
-    else:
+    elif not large_network and not detailed:
         architecture = [
             Standardize(118.380948, 61.896913),
 
@@ -168,11 +170,84 @@ def _get_architecture(large_network=False, weights_and_biases=None):
 
             Convolution(ws[7], bs[7],
                         activation='identity')]
+    elif large_network and detailed:
+        architecture = [
+            Standardize(118.380948, 61.896913),
+
+            Convolution(ws[0], bs[0], subsample=(2, 2),
+                        activation=None),
+            Relu(),
+            MaxPool((3, 3)),
+
+            Convolution(ws[1], bs[1], activation=None),
+            Relu(),
+            MaxPool((2, 2)),
+
+            ZeroPad(1),
+            Convolution(ws[2], bs[2], activation=None),
+            Relu(),
+
+            ZeroPad(1),
+            Convolution(ws[3], bs[3], activation=None),
+            Relu(),
+
+            ZeroPad(1),
+            Convolution(ws[4], bs[4], activation=None),
+            Relu(),
+
+            ZeroPad(1),
+            Convolution(ws[5], bs[5], activation=None),
+            Relu(),
+            MaxPool((3, 3)),
+
+            Convolution(ws[6], bs[6], activation=None),
+            Relu(),
+
+            Convolution(ws[7], bs[7], activation=None),
+            Relu(),
+
+            Convolution(ws[8], bs[8], activation=None)
+            ]
+    elif not large_network and detailed:
+        architecture = [
+            Standardize(118.380948, 61.896913),
+
+            Convolution(ws[0], bs[0], subsample=(4, 4), activation=None),
+            Relu(),
+            MaxPool((2, 2)),
+
+            Convolution(ws[1], bs[1], activation=None),
+            Relu(),
+            MaxPool((2, 2)),
+
+            ZeroPad(1),
+            Convolution(ws[2], bs[2], activation=None),
+            Relu(),
+
+            ZeroPad(1),
+            Convolution(ws[3], bs[3], activation=None),
+            Relu(),
+
+            ZeroPad(1),
+            Convolution(ws[4], bs[4], activation=None),
+            Relu(),
+
+            MaxPool((2, 2)),
+
+            Convolution(ws[5], bs[5], activation=None),
+            Relu(),
+
+            Convolution(ws[6], bs[6], activation=None),
+            Relu(),
+
+            Convolution(ws[7], bs[7], activation=None)
+            ]
+
     return architecture
 
 
-def _get_fprop(large_network=False, output_layers=[-1]):
-    arch = _get_architecture(large_network)
+def _get_fprop(large_network=False, output_layers=[-1], detailed=False):
+    arch = _get_architecture(large_network, detailed=detailed)
     expressions, input_var = fuse(arch, output_expressions=output_layers,
                                   input_dtype='float32')
     fprop = theano.function([input_var], expressions)
@@ -198,15 +273,25 @@ class OverfeatTransformer(BaseEstimator, TransformerMixin):
         this class can be used as part of a scikit-learn pipeline.
         force_reshape currently only supports len(output_layers) == 1!
 
+    detailed_network : boolean, optional (default=True)
+        If set to True, layers will be indexed and counted as in the binary
+        version provided by the authors of OverFeat. I.e. convolution, relu,
+        zero-padding, max-pooling are all separate layers. If False specified
+        then convolution and relu are one unit and zero-padding layers are
+        omitted.
+
     """
     def __init__(self, large_network=False, output_layers=[-1],
                  force_reshape=True,
-                 transpose_order=(0, 3, 1, 2)):
+                 transpose_order=(0, 3, 1, 2),
+                 detailed_network=False):
         self.large_network = large_network
         self.output_layers = output_layers
         self.force_reshape = force_reshape
         self.transpose_order = transpose_order
-        self.transform_function = _get_fprop(self.large_network, output_layers)
+        self.transform_function = _get_fprop(self.large_network,
+                                             output_layers,
+                                             detailed=detailed_network)
 
     def fit(self, X, y=None):
         """Passthrough for scikit-learn pipeline compatibility."""

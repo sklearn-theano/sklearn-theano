@@ -19,7 +19,8 @@ def _identity(x):
 ACTIVATIONS = {'sigmoid': T.nnet.sigmoid,
                'identity': _identity,
                'linear': _identity,
-               'relu': _relu}
+               'relu': _relu,
+               None: _identity}
 
 
 class Feedforward(object):
@@ -105,6 +106,72 @@ class Convolution(object):
         self.expression_ = self.activation_function(self.expression_)
 
 
+class MarginalConvolution(object):
+    """Same as Convolution if there is only one input channel. If there are
+    several input channels, then it convolves each with the same filter,
+    instead of using a 3D filter as does Convolution.
+    Used for scattering transform.
+    And for global smoothing.
+    """
+    def __init__(self,
+                 convolution_filter,
+                 activation=None,
+                 border_mode='valid',
+                 subsample=None,
+                 cropping=None,
+                 input_dtype='float32'):
+        self.convolution_filter = convolution_filter
+        self.activation = activation
+        self.border_mode = border_mode
+        self.subsample = subsample
+        self.input_dtype = input_dtype
+
+        self._build_expression()
+
+    def _build_expression(self):
+
+        if self.subsample is None:
+            self.subsample_ = (1, 1)
+        else:
+            self.subsample_ = self.subsample
+
+        cf = self.convolution_filter
+        if not isinstance(cf, T.sharedvar.TensorSharedVariable):
+            if isinstance(cf, np.ndarray):
+                self.convolution_filter_ = theano.shared(cf)
+            else:
+                raise ValueError("Variable type not understood")
+        else:
+            self.convolution_filter_ = cf
+
+        self.input_ = T.tensor4(dtype=self.input_dtype)
+        self.expression_ = T.nnet.conv2d(
+            self.input_.reshape((-1, 1,
+                                  self.input_.shape[-2],
+                                  self.input_.shape[-1])),
+            self.convolution_filter_.reshape((-1, 1,
+                                  self.convolution_filter_.shape[-2],
+                                  self.convolution_filter_.shape[-1])),
+            border_mode=self.border_mode,
+            subsample=self.subsample_)
+        if self.border_mode == 'valid':
+            output_shape = (
+                self.input_.shape[-2] -
+                self.convolution_filter_.shape[-2] + 1,
+                self.input_.shape[-1] -
+                self.convolution_filter_.shape[-1] + 1)
+        elif self.border_mode == 'full':
+            output_shape = (
+                self.input_.shape[-2] +
+                self.convolution_filter_.shape[-2] - 1,
+                self.input_.shape[-1] +
+                self.convolution_filter_.shape[-1] - 1)
+        self.expression_ = self.expression_.reshape(
+            (self.input_.shape[0], -1) + output_shape)
+        activation_function = ACTIVATIONS[self.activation]
+        self.expression_ = activation_function(self.expression_)
+
+
 class PassThrough(object):
     def __init__(self, input_dtype='float32'):
         pass  # should maybe initialize the type of variable
@@ -148,6 +215,58 @@ class MaxPool(object):
         self.input_ = T.tensor4(dtype=self.input_dtype)
         self.expression_ = max_pool_2d(self.input_, self.max_pool_stride,
                                        ignore_border=True)
+
+
+class ZeroPad(object):
+    """Zero-padding using a convolution with an appropriate padded Dirac.
+    Any input welcome as to how to make this more simple."""
+
+    def __init__(self, padding=1, input_dtype='float32'):
+        self.padding = padding
+        self.input_dtype = input_dtype
+
+        self._build_expression()
+
+    def _build_expression(self):
+        if isinstance(self.padding, numbers.Number):
+            self.padding_ = (self.padding,) * 4
+        elif len(self.padding) == 1:
+            self.padding_ = tuple(self.padding) * 4
+        elif len(self.padding) == 2:
+            self.padding_ = tuple(self.padding) * 2
+        elif len(self.padding) == 4:
+            self.padding_ = self.padding
+        else:
+            raise ValueError("padding must be of length 1, 2 or 4")
+
+        p = self.padding_
+        shape = (p[0] + 1 + p[2], p[1] + 1 + p[3])
+
+        padding_indicator = np.zeros(shape, dtype=np.dtype(self.input_dtype))
+        padding_indicator[p[0], p[1]] = 1.
+        self.padding_indicator_ = theano.shared(
+            padding_indicator[np.newaxis, np.newaxis])
+        self.input_ = T.tensor4(dtype=self.input_dtype)
+        input_shape = self.input_.shape
+        output_shape = (input_shape[0], input_shape[1],
+                        input_shape[2] + p[0] + p[2],
+                        input_shape[3] + p[1] + p[3])
+        intermediate_shape = (-1, 1, input_shape[2], input_shape[3])
+        self.expression_ = T.nnet.conv2d(
+            self.input_.reshape(intermediate_shape),
+            self.padding_indicator_,
+            border_mode='full').reshape(output_shape)
+
+
+class Relu(object):
+    def __init__(self, input_type=T.tensor4):
+        self.input_type = input_type
+
+        self._build_expression()
+
+    def _build_expression(self):
+        self.input_ = self.input_type()
+        self.expression_ = T.maximum(self.input_, 0)
 
 
 def fuse(building_blocks, fuse_dim=4, input_variables=None, entry_expression=None,
