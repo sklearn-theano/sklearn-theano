@@ -273,15 +273,25 @@ class OverfeatTransformer(BaseEstimator, TransformerMixin):
         this class can be used as part of a scikit-learn pipeline.
         force_reshape currently only supports len(output_layers) == 1!
 
+    detailed_network : boolean, optional (default=True)
+        If set to True, layers will be indexed and counted as in the binary
+        version provided by the authors of OverFeat. I.e. convolution, relu,
+        zero-padding, max-pooling are all separate layers. If False specified
+        then convolution and relu are one unit and zero-padding layers are
+        omitted.
+
     """
     def __init__(self, large_network=False, output_layers=[-1],
                  force_reshape=True,
-                 transpose_order=(0, 3, 1, 2)):
+                 transpose_order=(0, 3, 1, 2),
+                 detailed_network=False):
         self.large_network = large_network
         self.output_layers = output_layers
         self.force_reshape = force_reshape
         self.transpose_order = transpose_order
-        self.transform_function = _get_fprop(self.large_network, output_layers)
+        self.transform_function = _get_fprop(self.large_network,
+                                             output_layers,
+                                             detailed=detailed_network)
 
     def fit(self, X, y=None):
         """Passthrough for scikit-learn pipeline compatibility."""
