@@ -1,12 +1,56 @@
 import warnings
 from sklearn.cross_validation import ShuffleSplit
 from itertools import chain
-from sklearn.utils import indexable, safe_indexing
+from sklearn.utils import safe_indexing
 import numpy as np
+import scipy.sparse as sp
 
 
-# A port of sklearn 0.16's train_test_split and _num_sameples
-# to avoid check_arrays call in older sklearn
+# A port of sklearn 0.16 utilities
+# to avoid validation issues in older sklearn
+def check_consistent_length(*arrays):
+    """Check that all arrays have consistent first dimensions.
+
+    Checks whether all objects in arrays have the same shape or length.
+
+    Parameters
+    ----------
+    arrays : list or tuple of input objects.
+        Objects that will be checked for consistent length.
+    """
+
+    uniques = np.unique([_num_samples(X) for X in arrays if X is not None])
+    if len(uniques) > 1:
+        raise ValueError("Found arrays with inconsistent numbers of samples: %s"
+                         % str(uniques))
+
+
+def indexable(*iterables):
+    """Make arrays indexable for cross-validation.
+
+    Checks consistent length, passes through None, and ensures that everything
+    can be indexed by converting sparse matrices to csr and converting
+    non-interable objects to arrays.
+
+    Parameters
+    ----------
+    iterables : lists, dataframes, arrays, sparse matrices
+        List of objects to ensure sliceability.
+    """
+    result = []
+    for X in iterables:
+        if sp.issparse(X):
+            result.append(X.tocsr())
+        elif hasattr(X, "__getitem__") or hasattr(X, "iloc"):
+            result.append(X)
+        elif X is None:
+            result.append(X)
+        else:
+            result.append(np.array(X))
+    check_consistent_length(*result)
+    return result
+
+
 def _num_samples(x):
     """Return number of samples in array-like x."""
     if not hasattr(x, '__len__') and not hasattr(x, 'shape'):
