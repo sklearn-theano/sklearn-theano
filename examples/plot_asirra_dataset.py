@@ -14,8 +14,8 @@ print(__doc__)
 
 from sklearn_theano.datasets import fetch_asirra
 from sklearn_theano.feature_extraction import OverfeatTransformer
+from sklearn_theano.utils import train_test_split
 from sklearn.linear_model import LogisticRegression
-from sklearn.cross_validation import train_test_split
 from sklearn.pipeline import make_pipeline
 from sklearn.metrics import classification_report, accuracy_score
 import matplotlib.pyplot as plt
