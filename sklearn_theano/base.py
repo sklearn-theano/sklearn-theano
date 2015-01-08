@@ -217,9 +217,76 @@ class MaxPool(object):
                                        ignore_border=True)
 
 
+def _gcd(num1, num2):
+    """Calculate gcd(num1, num2), greatest common divisor, using euclid's
+    algorithm"""
+    while (num2 != 0):
+        if num1 > num2:
+            num1, num2 = num2, num1
+        num2 -= (num2 // num1) * num1
+    return num1
+
+
+def _lcm(num1, num2):
+    """Calculate least common multiple of num1 and num2"""
+    return num1 * num2 / _gcd(num1, num2)
+
+
+def fancy_max_pool1(input_tensor, pool_shape, pool_stride):
+    """Using theano built-in maxpooling, create a more flexible version.
+
+    Obviously suboptimal, but gets the work done."""
+
+    if isinstance(pool_shape, numbers.Number):
+        pool_shape = pool_shape,
+    if isinstance(pool_stride, numbers.Number):
+        pool_stride = pool_stride,
+
+    if len(pool_shape) == 1:
+        pool_shape = pool_shape * 2
+    if len(pool_stride) == 1:
+        pool_stride = pool_stride * 2
+
+    lcms = [_lcm(p, s) for p, s in zip(pool_shape, pool_stride)]
+
+    
+
+class FancyMaxPool(object):
+    """Extended pooling functionality. Allows independent specification
+    of pooling region shape and stride shape.
+
+    Parameters
+    ==========
+
+    pool_shape: tuple, (height, width)
+        Specifies the shape of the pooling regions
+
+    pool_stride: tuple, (vert, horiz)
+        Specifies the step between each pooling region
+
+    input_dtype: string, default 'float32'
+        Specifies the dtype of the input
+    """
+    def __init__(self, pool_shape, pool_stride, input_dtype='float32'):
+        self.pool_shape = pool_shape
+        self.pool_shape = pool_stride
+        self.input_dtype = input_dtype
+
+        self._build_expression()
+
+    def _build_expression(self):
+        self.input_ = T.tensor4(dtype=self.input_dtype)
+        self.expression_ = fancy_max_pool1(self.input_, self.pool_shape,
+                                          self.stride_shape)
+
+
+
 class ZeroPad(object):
     """Zero-padding using a convolution with an appropriate padded Dirac.
-    Any input welcome as to how to make this more simple."""
+    Any input welcome as to how to make this more simple.
+
+    TODO: Use T.setsubtensor !!
+    """
 
     def __init__(self, padding=1, input_dtype='float32'):
         self.padding = padding
