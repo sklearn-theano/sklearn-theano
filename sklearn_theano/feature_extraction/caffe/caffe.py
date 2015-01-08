@@ -109,7 +109,7 @@ from sklearn_theano.base import (Convolution, Relu, MaxPool)
 
 
 if __name__ == "__main__":
-    pb = _parse_caffe_model("/home/me232320/Downloads/cifar10_nin.caffemodel")
+    pb = _parse_caffe_model("/home/me/Downloads/cifar10_nin.caffemodel")
     import IPython
     IPython.embed()
 
