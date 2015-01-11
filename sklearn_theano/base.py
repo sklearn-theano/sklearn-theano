@@ -232,7 +232,8 @@ def _lcm(num1, num2):
     return num1 * num2 / _gcd(num1, num2)
 
 
-def fancy_max_pool1(input_tensor, pool_shape, pool_stride):
+def fancy_max_pool(input_tensor, pool_shape, pool_stride,
+                    ignore_border=False):
     """Using theano built-in maxpooling, create a more flexible version.
 
     Obviously suboptimal, but gets the work done."""
@@ -247,9 +248,37 @@ def fancy_max_pool1(input_tensor, pool_shape, pool_stride):
     if len(pool_stride) == 1:
         pool_stride = pool_stride * 2
 
-    lcms = [_lcm(p, s) for p, s in zip(pool_shape, pool_stride)]
+    lcmh, lcmw = [_lcm(p, s) for p, s in zip(pool_shape, pool_stride)]
+    dsh, dsw = lcmh / pool_shape[0], lcmw / pool_shape[1]
 
-    
+    pre_shape = input_tensor.shape[:-2]
+    length = T.prod(pre_shape)
+    post_shape = input_tensor.shape[-2:]
+    new_shape = T.concatenate([[length], post_shape])
+    reshaped_input = input_tensor.reshape(new_shape, ndim=3)
+    sub_pools = []
+    for sh in range(0, lcmh, pool_stride[0]):
+        sub_pool = []
+        sub_pools.append(sub_pool)
+        for sw in range(0, lcmw, pool_stride[1]):
+            full_pool = max_pool_2d(reshaped_input[:, sh:,
+                                                      sw:],
+                                    pool_shape, ignore_border=ignore_border)
+            ds_pool = full_pool[:, ::dsh, ::dsw]
+            concat_shape = T.concatenate([[length], ds_pool.shape[-2:]])
+            sub_pool.append(ds_pool.reshape(concat_shape, ndim=3))
+    output_shape = (length,
+                    T.sum([l[0].shape[1] for l in sub_pools]),
+                    T.sum([i.shape[2] for i in sub_pools[0]]))
+    output = T.zeros(output_shape)
+    for i, line in enumerate(sub_pools):
+        for j, item in enumerate(line):
+            output = T.set_subtensor(output[:, i::lcmh / pool_stride[0],
+                                               j::lcmw / pool_stride[1]],
+                                     item)
+    return output.reshape(T.concatenate([pre_shape, output.shape[1:]]),
+                          ndim=input_tensor.ndim)
+
 
 class FancyMaxPool(object):
     """Extended pooling functionality. Allows independent specification
@@ -276,7 +305,7 @@ class FancyMaxPool(object):
 
     def _build_expression(self):
         self.input_ = T.tensor4(dtype=self.input_dtype)
-        self.expression_ = fancy_max_pool1(self.input_, self.pool_shape,
+        self.expression_ = fancy_max_pool(self.input_, self.pool_shape,
                                           self.stride_shape)
 
 
