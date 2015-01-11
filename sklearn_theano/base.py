@@ -62,9 +62,9 @@ class Convolution(object):
         self.cropping = cropping
         self.input_dtype = input_dtype
 
-        self._build_expression()  # not sure whether this is legit here
+        # self._build_expression()  # not sure whether this is legit here
 
-    def _build_expression(self):
+    def _build_expression(self, input_tensor=None):
         if self.cropping is None:
             self.cropping_ = [(0, None), (0, None)]
         else:
@@ -94,7 +94,11 @@ class Convolution(object):
             else:
                 self.biases_ = biases
 
-        self.input_ = T.tensor4(dtype=self.input_dtype)
+        if input_tensor is None:
+            self.input_ = T.tensor4(dtype=self.input_dtype)
+        else:
+            self.input_ = input_tensor
+
         c = self.cropping_
         self.expression_ = T.nnet.conv2d(self.input_,
             self.convolution_filter_,
@@ -389,6 +393,8 @@ def fuse(building_blocks, fuse_dim=4, input_variables=None, entry_expression=Non
     outputs = []
 
     for i, block in enumerate(building_blocks):
+        if not hasattr(block, "expression_"):
+            block._build_expression()
         current_expression = theano.clone(
             block.expression_,
             replace={block.input_: current_expression},
