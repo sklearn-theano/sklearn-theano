@@ -36,8 +36,11 @@ class Feedforward(object):
             self.biases = None
         self._build_expression()  # maybe have a flag
 
-    def _build_expression(self):
-        self.input_ = T.matrix(dtype=self.input_dtype)
+    def _build_expression(self, input_tensor=None):
+        if input_tensor is not None:
+            self.input_ = input_tensor
+        else:
+            self.input_ = T.matrix(dtype=self.input_dtype)
         self.expression_ = T.dot(self.input_, self.weights)
         if self.biases is not None:
             self.expression_ += self.biases
@@ -62,7 +65,7 @@ class Convolution(object):
         self.cropping = cropping
         self.input_dtype = input_dtype
 
-        # self._build_expression()  # not sure whether this is legit here
+        self._build_expression()  # not sure whether this is legit here
 
     def _build_expression(self, input_tensor=None):
         if self.cropping is None:
@@ -274,7 +277,7 @@ def fancy_max_pool(input_tensor, pool_shape, pool_stride,
     output_shape = (length,
                     T.sum([l[0].shape[1] for l in sub_pools]),
                     T.sum([i.shape[2] for i in sub_pools[0]]))
-    output = T.zeros(output_shape)
+    output = T.zeros(output_shape, dtype=input_tensor.dtype)
     for i, line in enumerate(sub_pools):
         for j, item in enumerate(line):
             output = T.set_subtensor(output[:, i::lcmh / pool_stride[0],
@@ -302,15 +305,18 @@ class FancyMaxPool(object):
     """
     def __init__(self, pool_shape, pool_stride, input_dtype='float32'):
         self.pool_shape = pool_shape
-        self.pool_shape = pool_stride
+        self.pool_stride = pool_stride
         self.input_dtype = input_dtype
 
         self._build_expression()
 
-    def _build_expression(self):
-        self.input_ = T.tensor4(dtype=self.input_dtype)
+    def _build_expression(self, input_expression=None):
+        if input_expression is None:
+            self.input_ = T.tensor4(dtype=self.input_dtype)
+        else:
+            self.input_ = input_expression
         self.expression_ = fancy_max_pool(self.input_, self.pool_shape,
-                                          self.stride_shape)
+                                          self.pool_stride)
 
 
 
@@ -364,9 +370,28 @@ class Relu(object):
 
         self._build_expression()
 
-    def _build_expression(self):
-        self.input_ = self.input_type()
+    def _build_expression(self, input_tensor=None):
+        if input_tensor is None:
+            self.input_ = self.input_type()
+        else:
+            self.input_ = input_tensor
         self.expression_ = T.maximum(self.input_, 0)
+
+
+class LRN(object):
+    def __init__(self, input_type=T.tensor4):
+        self.input_type = input_type
+
+        self._build_expression()
+
+    def _build_expression(self, input_tensor=None):
+        if input_tensor is None:
+            self.input_ = self.input_type()
+        else:
+            self.input_ = input_tensor
+
+        # TODO: ACTUALLY IMPLEMENT LRN
+        self.expression_ = self.input_
 
 
 def fuse(building_blocks, fuse_dim=4, input_variables=None, entry_expression=None,

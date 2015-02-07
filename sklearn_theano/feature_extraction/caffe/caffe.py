@@ -109,11 +109,11 @@ def _parse_caffe_model(caffe_model):
 
     output = (layer_names, layer_type_names, bottom_blobs,
               top_blobs, layer_blobs_ndarrays, pooling_info)
-
     return output
 
 
-from sklearn_theano.base import (Convolution, Relu, MaxPool, FancyMaxPool)
+from sklearn_theano.base import (Convolution, Relu, MaxPool, FancyMaxPool,
+                                 LRN, Feedforward)
 
 
 def parse_caffe_model(caffe_model, float_dtype='float32'):
@@ -145,52 +145,53 @@ def parse_caffe_model(caffe_model, float_dtype='float32'):
     raw_parsed = _parse_caffe_model(caffe_model)
 
     layers = OrderedDict()
-    # inputs = OrderedDict()
+    inputs = OrderedDict()
     blobs = OrderedDict()
 
     for i, (layer_name, layer_type, bottom_blobs,
             top_blobs, layer_blobs, pooling_info
             ) in enumerate(zip(*raw_parsed)):
+        print i
         if layer_type == 'DATA':
             # DATA layers contain input data in top_blobs, create input
             # variables, float for 'data' and int for 'label'
             for data_blob_name in top_blobs:
                 if data_blob_name == 'label':
                     blobs['label'] = T.ivector()
+                    inputs['label'] = blobs['label']
                 else:
                     blobs[data_blob_name] = T.tensor4(dtype=float_dtype)
+                    inputs[data_blob_name] = blobs[data_blob_name]
         elif layer_type == 'CONVOLUTION':
             # CONVOLUTION layers take input from bottom_blob, convolve with
             # layer_blobs[0], and add bias layer_blobs[1]
             conv_filter = layer_blobs[0].astype(float_dtype)
             conv_bias = layer_blobs[1].astype(float_dtype).ravel()
             convolution_input = blobs[bottom_blobs[0]]
-            import IPython
-            IPython.embed()
             convolution = Convolution(conv_filter, biases=conv_bias,
                                       activation=None, subsample=None,
                                       input_dtype=float_dtype)
             convolution._build_expression(convolution_input)
             layers[layer_name] = convolution
-            blobs[top_blobs[0]] = convolution
+            blobs[top_blobs[0]] = convolution.expression_
         elif layer_type == "RELU":
             # RELU layers take input from bottom_blobs, set everything
             # negative to zero and write the result to top_blobs
-            relu_input = bottom_blobs[0]
+            relu_input = blobs[bottom_blobs[0]]
             relu = Relu()
             relu._build_expression(relu_input)
             layers[layer_name] = relu
-            blobs[top_blobs[0]] = relu
+            blobs[top_blobs[0]] = relu.expression_
         elif layer_type == "POOLING":
             # POOLING layers take input from bottom_blobs, perform max
             # pooling according to stride and kernel size information
             # and write the result to top_blobs
-            pooling_input = bottom_blobs[0]
+            pooling_input = blobs[bottom_blobs[0]]
             kernel_size, stride = pooling_info
             pooling = FancyMaxPool(kernel_size, stride)
             pooling._build_expression(pooling_input)
             layers[layer_name] = pooling
-            blobs[top_blobs[0]] = pooling
+            blobs[top_blobs[0]] = pooling.expression_
         elif layer_type == "DROPOUT":
             # DROPOUT may figure in some networks, but it is only relevant
             # at the learning stage, not at the prediction stage.
@@ -199,11 +200,43 @@ def parse_caffe_model(caffe_model, float_dtype='float32'):
             # SOFTMAX_LOSS is used at training time. At prediction time, we
             # should replace it with a soft max.
             pass
+        elif layer_type == "SPLIT":
+            split_input = blobs[bottom_blobs[0]]
+            for top_blob in top_blobs:
+                blobs[top_blob] = split_input
+            # Should probably make a class to be able to add to layers
+            layers[layer_name] = "SPLIT"
+        elif layer_type == "LRN":
+            # Local normalization layer
+            lrn_input = blobs[bottom_blobs[0]]
+            lrn = LRN()
+            lrn._build_expression(lrn_input)
+            layers[layer_name] = lrn
+            blobs[top_blobs[0]] = lrn.expression_
+        elif layer_type == "CONCAT":
+            input_expressions = [blobs[bottom_blob] for bottom_blob
+                                 in bottom_blobs]
+            output_expression = T.concatenate(input_expressions)
+            blobs[top_blobs[0]] = output_expression
+            layers[layer_name] = "CONCAT"
+        elif layer_type == "INNER_PRODUCT":
+            weights = layer_blobs[0].astype(float_dtype).squeeze()
+            biases = layer_blobs[1].astype(float_dtype).squeeze()
+            fully_connected_input = blobs[bottom_blobs[0]]
+            fc_layer = Feedforward(weights, biases, activation=None)
+            fc_layer._build_expression(fully_connected_input)
+            layers[layer_name] = fc_layer
+            blobs[top_blobs[0]] = fc_layer.expression_
+        else:
+            import IPython
+            IPython.embed()
 
-    return layers, blobs
+    return layers, blobs, inputs
 
 if __name__ == "__main__":
-    pb = parse_caffe_model("/home/me232320/Downloads/cifar10_nin.caffemodel")
-    import IPython
-    IPython.embed()
+    # pb = parse_caffe_model("/home/me/Downloads/cifar10_nin.caffemodel")
+    pb = parse_caffe_model("/home/me/software/caffe/models/"
+                           "bvlc_googlenet/bvlc_googlenet.caffemodel")
+    # import IPython
+    # IPython.embed()
 
