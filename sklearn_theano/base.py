@@ -357,11 +357,12 @@ class ZeroPad(object):
         output_shape = (input_shape[0], input_shape[1],
                         input_shape[2] + p[0] + p[2],
                         input_shape[3] + p[1] + p[3])
-        intermediate_shape = (-1, 1, input_shape[2], input_shape[3])
-        self.expression_ = T.nnet.conv2d(
-            self.input_.reshape(intermediate_shape),
-            self.padding_indicator_,
-            border_mode='full').reshape(output_shape)
+        output = T.zeros(output_shape, dtype=self.input_.dtype)
+        self.expression_ = T.set_subtensor(
+            output[:, :, p[0]:output_shape[2] - p[2],
+                         p[1]:output_shape[3] - p[3]],
+            self.input_)
+        return None
 
 
 class Relu(object):
