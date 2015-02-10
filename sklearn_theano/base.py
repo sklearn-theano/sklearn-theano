@@ -333,7 +333,7 @@ class ZeroPad(object):
 
         self._build_expression()
 
-    def _build_expression(self):
+    def _build_expression(self, input_expression=None):
         if isinstance(self.padding, numbers.Number):
             self.padding_ = (self.padding,) * 4
         elif len(self.padding) == 1:
@@ -352,7 +352,10 @@ class ZeroPad(object):
         padding_indicator[p[0], p[1]] = 1.
         self.padding_indicator_ = theano.shared(
             padding_indicator[np.newaxis, np.newaxis])
-        self.input_ = T.tensor4(dtype=self.input_dtype)
+        if input_expression is None:
+            self.input_ = T.tensor4(dtype=self.input_dtype)
+        else:
+            self.input_ = input_expression
         input_shape = self.input_.shape
         output_shape = (input_shape[0], input_shape[1],
                         input_shape[2] + p[0] + p[2],
