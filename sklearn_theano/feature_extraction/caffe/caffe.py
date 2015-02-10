@@ -112,8 +112,207 @@ def _parse_caffe_model(caffe_model):
     return output
 
 
+LAYER_PROPERTIES = dict(
+    DATA=None,
+    CONVOLUTION=('blobs',
+                 ('convolution_param', 'stride'),
+                 ('convolution_param', 'stride_h'),
+                 ('convolution_param', 'stride_w'),
+                 ('convolution_param', 'pad'),
+                 ('convolution_param', 'pad_h'),
+                 ('convolution_param', 'pad_w')),
+    RELU=None,
+    POOLING=(('pooling_param', 'kernel_size'),
+             ('pooling_param', 'kernel_h'),
+             ('pooling_param', 'kernel_w'),
+             ('pooling_param', 'stride'),
+             ('pooling_param', 'stride_h'),
+             ('pooling_param', 'stride_w'),
+             ('pooling_param', 'pad'),
+             ('pooling_param', 'pad_h'),
+             ('pooling_param', 'pad_w')
+             ),
+    SPLIT=None,
+    LRN=(('lrn_param', 'local_size'),
+         ('lrn_param', 'alpha'),
+         ('lrn_param', 'beta'),
+         ('lrn_param', 'norm_region')),
+    CONCAT=(('concat_param', 'concat_dim'),),
+    INNER_PRODUCT=('blobs',),
+    SOFTMAX_LOSS=None,
+    DROPOUT=None
+)
+
+
+def _get_property(obj, property_path):
+
+    if isinstance(property_path, tuple):
+        if len(property_path) == 1:
+            return getattr(obj, property_path[0])
+        else:
+            return _get_property(getattr(obj, property_path[0]),
+                                 property_path[1:])
+    else:
+        return getattr(obj, property_path)
+
+
+def __parse_caffe_model(caffe_model):
+    if not hasattr(caffe_model, "layers"):
+        # Consider it a filename
+        caffe_model = _open_caffe_model(caffe_model)
+    layers_raw = caffe_model.layers
+    parsed = []
+    for layer in layers_raw:
+        # standard properties
+        ltype = layer_types[layer.type]
+        layer_descriptor = dict(type=ltype,
+                                name=layer.name,
+                                top_blobs=layer.top,
+                                bottom_blobs=layer.bottom)
+        parsed.append(layer_descriptor)
+        # specific properties
+        specifics = LAYER_PROPERTIES[ltype]
+        if specifics is None:
+            continue
+        for param in specifics:
+            if param == 'blobs':
+                layer_descriptor['blobs'] = map(_blob_to_ndarray,
+                                                layer.blobs)
+            else:
+                param_name = '__'.join(param)
+                param_value = _get_property(layer, param)
+                layer_descriptor[param_name] = param_value
+    return parsed
+
+
 from sklearn_theano.base import (Convolution, Relu, MaxPool, FancyMaxPool,
-                                 LRN, Feedforward)
+                                 LRN, Feedforward, ZeroPad)
+
+
+def parse_caffe_model_again(caffe_model, float_dtype='float32'):
+
+    if isinstance(caffe_model, str) or not isinstance(caffe_model, list):
+        parsed_caffe_model = __parse_caffe_model(caffe_model)
+    else:
+        parsed_caffe_model = caffe_model
+
+
+    layers = OrderedDict()
+    inputs = OrderedDict()
+    blobs = OrderedDict()
+
+    for i, layer in enumerate(parsed_caffe_model):
+        layer_type = layer['type']
+        layer_name = layer['name']
+        top_blobs = layer['top_blobs']
+        bottom_blobs = layer['bottom_blobs']
+        layer_blobs = layer.get('blobs', None)
+
+        print "%d\t%s\t%s" % (i, layer_type, layer_name)
+        if layer_type == 'DATA':
+            # DATA layers contain input data in top_blobs, create input
+            # variables, float for 'data' and int for 'label'
+            for data_blob_name in top_blobs:
+                if data_blob_name == 'label':
+                    blobs['label'] = T.ivector()
+                    inputs['label'] = blobs['label']
+                else:
+                    blobs[data_blob_name] = T.tensor4(dtype=float_dtype)
+                    inputs[data_blob_name] = blobs[data_blob_name]
+        elif layer_type == 'CONVOLUTION':
+            # CONVOLUTION layers take input from bottom_blob, convolve with
+            # layer_blobs[0], and add bias layer_blobs[1]
+            stride = layer['convolution_param__stride']
+            stride_h = max(layer['convolution_param__stride_h'], stride)
+            stride_w = max(layer['convolution_param__stride_w'], stride)
+            if stride_h > 1 or stride_w > 1:
+                subsample = (stride_h, stride_w)
+            else:
+                subsample = None
+            pad = layer['convolution_param__pad']
+            pad_h = max(layer['convolution_param__pad_h'], pad)
+            pad_w = max(layer['convolution_param__pad_w'], pad)
+            conv_filter = layer_blobs[0].astype(float_dtype)
+            conv_bias = layer_blobs[1].astype(float_dtype).ravel()
+            convolution_input = blobs[bottom_blobs[0]]
+            convolution = Convolution(conv_filter, biases=conv_bias,
+                                      activation=None, subsample=subsample,
+                                      input_dtype=float_dtype)
+            convolution._build_expression(convolution_input)
+            expression = convolution.expression_
+            if pad_h > 0 or pad_w > 0:
+                zp = ZeroPad((pad_h, pad_w))
+                zp._build_expression(expression)
+                expression = zp.expression_
+                layers[layer_name] = (convolution, zp)
+            else:
+                layers[layer_name] = convolution
+            blobs[top_blobs[0]] = expression
+        elif layer_type == "RELU":
+            # RELU layers take input from bottom_blobs, set everything
+            # negative to zero and write the result to top_blobs
+            relu_input = blobs[bottom_blobs[0]]
+            relu = Relu()
+            relu._build_expression(relu_input)
+            layers[layer_name] = relu
+            blobs[top_blobs[0]] = relu.expression_
+        elif layer_type == "POOLING":
+            # POOLING layers take input from bottom_blobs, perform max
+            # pooling according to stride and kernel size information
+            # and write the result to top_blobs
+            pooling_input = blobs[bottom_blobs[0]]
+            kernel_size = layer['pooling_param__kernel_size']
+            kernel_h = max(layer['pooling_param__kernel_h'], kernel_size)
+            kernel_w = max(layer['pooling_param__kernel_w'], kernel_size)
+            stride = layer['pooling_param__stride']
+            stride_h = max(layer['pooling_param__stride_h'], stride)
+            stride_w = max(layer['pooling_param__stride_w'], stride)
+            pooling = FancyMaxPool((kernel_h, kernel_w),
+                                   (stride_h, stride_w))
+            pooling._build_expression(pooling_input)
+            layers[layer_name] = pooling
+            blobs[top_blobs[0]] = pooling.expression_
+        elif layer_type == "DROPOUT":
+            # DROPOUT may figure in some networks, but it is only relevant
+            # at the learning stage, not at the prediction stage.
+            pass
+        elif layer_type == "SOFTMAX_LOSS":
+            # SOFTMAX_LOSS is used at training time. At prediction time, we
+            # should replace it with a soft max.
+            pass
+        elif layer_type == "SPLIT":
+            split_input = blobs[bottom_blobs[0]]
+            for top_blob in top_blobs:
+                blobs[top_blob] = split_input
+            # Should probably make a class to be able to add to layers
+            layers[layer_name] = "SPLIT"
+        elif layer_type == "LRN":
+            # Local normalization layer
+            lrn_input = blobs[bottom_blobs[0]]
+            lrn = LRN()
+            lrn._build_expression(lrn_input)
+            layers[layer_name] = lrn
+            blobs[top_blobs[0]] = lrn.expression_
+        elif layer_type == "CONCAT":
+            input_expressions = [blobs[bottom_blob] for bottom_blob
+                                 in bottom_blobs]
+            axis = layer['concat_param__concat_dim']
+            output_expression = T.concatenate(input_expressions, axis=axis)
+            blobs[top_blobs[0]] = output_expression
+            layers[layer_name] = "CONCAT"
+        elif layer_type == "INNER_PRODUCT":
+            weights = layer_blobs[0].astype(float_dtype).squeeze()
+            biases = layer_blobs[1].astype(float_dtype).squeeze()
+            fully_connected_input = blobs[bottom_blobs[0]]
+            fc_layer = Feedforward(weights, biases, activation=None)
+            fc_layer._build_expression(fully_connected_input)
+            layers[layer_name] = fc_layer
+            blobs[top_blobs[0]] = fc_layer.expression_
+        else:
+            import IPython
+            IPython.embed()
+
+    return layers, blobs, inputs
 
 
 def parse_caffe_model(caffe_model, float_dtype='float32'):
@@ -235,8 +434,11 @@ def parse_caffe_model(caffe_model, float_dtype='float32'):
 
 if __name__ == "__main__":
     # pb = parse_caffe_model("/home/me/Downloads/cifar10_nin.caffemodel")
-    pb = parse_caffe_model("/home/me/software/caffe/models/"
-                           "bvlc_googlenet/bvlc_googlenet.caffemodel")
+    # pb = parse_caffe_model("/home/me/software/caffe/models/"
+    #                       "bvlc_googlenet/bvlc_googlenet.caffemodel")
+
+    p = __parse_caffe_model("/home/me/software/caffe/models/"
+                            "bvlc_googlenet/bvlc_googlenet.caffemodel")
     # import IPython
     # IPython.embed()
 
