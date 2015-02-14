@@ -94,7 +94,8 @@ LAYER_PROPERTIES = dict(
              ('pooling_param', 'stride_w'),
              ('pooling_param', 'pad'),
              ('pooling_param', 'pad_h'),
-             ('pooling_param', 'pad_w')
+             ('pooling_param', 'pad_w'),
+             ('pooling_param', 'pool')
              ),
     SPLIT=None,
     LRN=(('lrn_param', 'local_size'),
@@ -150,7 +151,8 @@ def _parse_caffe_model(caffe_model):
 
 
 from sklearn_theano.base import (Convolution, Relu, MaxPool, FancyMaxPool,
-                                 LRN, Feedforward, ZeroPad)
+                                 LRN, Feedforward, ZeroPad,
+                                 CaffePool)
 
 
 def parse_caffe_model(caffe_model, float_dtype='float32'):
@@ -196,21 +198,31 @@ def parse_caffe_model(caffe_model, float_dtype='float32'):
             pad = layer['convolution_param__pad']
             pad_h = max(layer['convolution_param__pad_h'], pad)
             pad_w = max(layer['convolution_param__pad_w'], pad)
-            conv_filter = layer_blobs[0].astype(float_dtype)
+            conv_filter = layer_blobs[0].astype(float_dtype)[..., ::-1, ::-1]
             conv_bias = layer_blobs[1].astype(float_dtype).ravel()
             convolution_input = blobs[bottom_blobs[0]]
             convolution = Convolution(conv_filter, biases=conv_bias,
                                       activation=None, subsample=subsample,
                                       input_dtype=float_dtype)
-            convolution._build_expression(convolution_input)
-            expression = convolution.expression_
+            # If padding is specified, need to pad. In practice, I think
+            # caffe prevents padding that would make the filter see only
+            # zeros, so technically this can also be obtained by sensibly
+            # cropping a border_mode=full convolution. However, subsampling
+            # may then be off by 1 and would have to be done separately :/
             if pad_h > 0 or pad_w > 0:
                 zp = ZeroPad((pad_h, pad_w))
-                zp._build_expression(expression)
+                zp._build_expression(convolution_input)
                 expression = zp.expression_
-                layers[layer_name] = (convolution, zp)
+                layers[layer_name] = (zp, convolution)
             else:
                 layers[layer_name] = convolution
+                expression = convolution_input
+            convolution._build_expression(expression)
+            expression = convolution.expression_
+            # if subsample is not None:
+            #     expression = expression[:, :, ::subsample[0],
+            #                                     ::subsample[1]]
+
             blobs[top_blobs[0]] = expression
         elif layer_type == "RELU":
             # RELU layers take input from bottom_blobs, set everything
@@ -231,8 +243,19 @@ def parse_caffe_model(caffe_model, float_dtype='float32'):
             stride = layer['pooling_param__stride']
             stride_h = max(layer['pooling_param__stride_h'], stride)
             stride_w = max(layer['pooling_param__stride_w'], stride)
-            pooling = FancyMaxPool((kernel_h, kernel_w),
-                                   (stride_h, stride_w))
+            pad = layer['pooling_param__pad']
+            pad_h = max(layer['pooling_param__pad_h'], pad)
+            pad_w = max(layer['pooling_param__pad_w'], pad)
+            pool_types = {0: 'max', 1: 'avg'} 
+            pool_type = pool_types[layer['pooling_param__pool']]
+            print "POOL TYPE is %s" % pool_type
+            # pooling = FancyMaxPool((kernel_h, kernel_w),
+            #                        (stride_h, stride_w),
+            #                        ignore_border=False)
+            pooling = CaffePool((kernel_h, kernel_w),
+                                (stride_h, stride_w),
+                                (pad_h, pad_w),
+                                pool_type=pool_type)
             pooling._build_expression(pooling_input)
             layers[layer_name] = pooling
             blobs[top_blobs[0]] = pooling.expression_
@@ -253,7 +276,11 @@ def parse_caffe_model(caffe_model, float_dtype='float32'):
         elif layer_type == "LRN":
             # Local normalization layer
             lrn_input = blobs[bottom_blobs[0]]
-            lrn = LRN()
+            lrn_factor = layer['lrn_param__alpha']
+            lrn_exponent = layer['lrn_param__beta']
+            axis = {0:'channels'}[layer['lrn_param__norm_region']]
+            nsize = layer['lrn_param__local_size']
+            lrn = LRN(nsize, lrn_factor, lrn_exponent, axis=axis)
             lrn._build_expression(lrn_input)
             layers[layer_name] = lrn
             blobs[top_blobs[0]] = lrn.expression_
@@ -279,6 +306,35 @@ def parse_caffe_model(caffe_model, float_dtype='float32'):
     return layers, blobs, inputs
 
 
+####### Stealing from pycaffe
+
+## resize_image in order to have exactly the same input images
+from scipy.ndimage import zoom
+from skimage.transform import resize
+def resize_image(im, new_dims, interp_order=1):
+    """
+    Resize an image array with interpolation.
+
+    Take
+    im: (H x W x K) ndarray
+    new_dims: (height, width) tuple of new dimensions.
+    interp_order: interpolation order, default is linear.
+
+    Give
+    im: resized ndarray with shape (new_dims[0], new_dims[1], K)
+    """
+    if im.shape[-1] == 1 or im.shape[-1] == 3:
+        # skimage is fast but only understands {1,3} channel images in [0, 1].
+        im_min, im_max = im.min(), im.max()
+        im_std = (im - im_min) / (im_max - im_min)
+        resized_std = resize(im_std, new_dims, order=interp_order)
+        resized_im = resized_std * (im_max - im_min) + im_min
+    else:
+        # ndimage interpolates anything but more slowly.
+        scale = tuple(np.array(new_dims) / np.array(im.shape[:2]))
+        resized_im = zoom(im, scale + (1,), order=interp_order)
+    return resized_im.astype(np.float32)
+
 
 if __name__ == "__main__":
     # pb = parse_caffe_model("/home/me/Downloads/cifar10_nin.caffemodel")
@@ -286,9 +342,25 @@ if __name__ == "__main__":
                           "bvlc_googlenet/bvlc_googlenet.caffemodel")
     pb = parse_caffe_model(p)
     from skimage.data import coffee
-    c = coffee().transpose(2, 0, 1)[np.newaxis].astype(np.float32)
+    import Image
+    # c_resized = np.array(Image.fromarray(coffee()).resize((224, 224)))
+    c_resized = resize_image(coffee().astype(np.float32), (224, 224))
+    c = c_resized.transpose(2, 0, 1)[np.newaxis].astype(np.float32)
     inp = pb[2]['data']
-    
+
+    d = np.load("camera.npz")
+
+    blob_of_interest = d['blob_names'][119]
+    # blob_of_interest = p[3]['name']
+    print "Looking at blob %s" % blob_of_interest
+
+    expr = pb[1][blob_of_interest]
+    f = theano.function([inp], expr)
+    l = d[blob_of_interest]
+    k = f(c)
+
+
+    clf = theano.function([inp], pb[1][d['blob_names'][-2]])
 
     # import IPython
     # IPython.embed()

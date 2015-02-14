@@ -7,6 +7,7 @@ import numbers
 import numpy as np
 import theano.tensor as T
 from theano.tensor.signal.downsample import max_pool_2d
+from scipy.sparse import dia_matrix
 
 
 def _relu(x):
@@ -303,9 +304,11 @@ class FancyMaxPool(object):
     input_dtype: string, default 'float32'
         Specifies the dtype of the input
     """
-    def __init__(self, pool_shape, pool_stride, input_dtype='float32'):
+    def __init__(self, pool_shape, pool_stride,
+                 ignore_border=False, input_dtype='float32'):
         self.pool_shape = pool_shape
         self.pool_stride = pool_stride
+        self.ignore_border = ignore_border
         self.input_dtype = input_dtype
 
         self._build_expression()
@@ -315,16 +318,99 @@ class FancyMaxPool(object):
             self.input_ = T.tensor4(dtype=self.input_dtype)
         else:
             self.input_ = input_expression
-        self.expression_ = fancy_max_pool(self.input_, self.pool_shape,
-                                          self.pool_stride)
+        print "Pooling: shape %s stride %s" % (str(self.pool_shape),
+                                               str(self.pool_stride))
+        if self.pool_stride == self.pool_shape:
+            self.expression_ = T.signal.downsample.max_pool_2d(
+                self.input_, self.pool_shape,
+                ignore_border=self.ignore_border)
+        else:
+            self.expression_ = fancy_max_pool(self.input_, self.pool_shape,
+                                          self.pool_stride,
+                                          self.ignore_border)
 
+
+class CaffePool(object):
+    """Replicate the caffe pooling layer exactly.
+    For the moment, explicit zero-padding will be used."""
+
+    def __init__(self, pool_shape, pool_stride=1,
+                 padding=0, pool_type='max',
+                 input_dtype='float32'):
+        """Caffe pooling layer with the known params."""
+
+        self.pool_shape = pool_shape
+        self.pool_stride = pool_stride
+        self.padding = padding
+        self.pool_type = pool_type
+        self.input_dtype = input_dtype
+
+        self._build_expression()
+
+    def _build_expression(self, input_expression=None):
+        if self.pool_type not in ['max', 'avg']:
+            raise NotImplementedError(
+                'Pooling only implemented for max and avg')
+
+        if input_expression is None:
+            self.input_ = T.tensor4(dtype=self.input_dtype)
+        else:
+            self.input_ = input_expression
+
+        # Replicating caffe style pooling means zero padding
+        # then strided pooling with ignore_border=True
+        # if self.padding in [0, (0, 0)]:
+        #     padded_input = self.input_
+        # else:
+        if True:
+            zero_padder = ZeroPad(padding=self.padding)
+            zero_padder._build_expression(self.input_)
+            padded_input = zero_padder.expression_
+        if self.pool_type == 'max':
+            pooled = fancy_max_pool(padded_input,
+                                    self.pool_shape, self.pool_stride,
+                                    ignore_border=False)
+        elif self.pool_type == 'avg':
+            # self.pool_shape needs to be a tuple
+            avg_kernel = T.cast(T.ones((1, 1) + self.pool_shape,
+                                dtype=self.input_.dtype
+                                ) / np.prod(self.pool_shape),
+                                self.input_.dtype)
+            n_imgs = self.input_.shape[0]
+            n_channels = self.input_.shape[1]
+            conv_output = T.nnet.conv2d(
+                padded_input.reshape((n_imgs * n_channels, 1,
+                                      padded_input.shape[2],
+                                      padded_input.shape[3])),
+                avg_kernel, subsample=self.pool_stride)
+            pooled = conv_output.reshape((n_imgs, n_channels,
+                                         conv_output.shape[2],
+                                         conv_output.shape[3]))
+
+        # A caffe quirk: The output shape is (for width, analogous for h:)
+        # ceil((w + 2 * pad_w - kernel_w) / stride_w) + 1, instead of floor
+        # With floor, ignore_border=True would have yielded the exact result
+        # With ceil, sometimes we need an extra column and/or line. So we do
+        # ignore_border=False and then crop to the right shape. Since the
+        # shape is dynamic we need to first calculate it:
+
+        # padding gotta be a tuple too
+        pad = T.constant(self.padding)
+        # pad = T.constant(zero_padder.padding_)
+        # supposing here that self.pool_shape is a tuple. Should check
+        pool_shape = T.constant(self.pool_shape)
+        # stride hopefully a tuple, too
+        pool_stride = T.constant(self.pool_stride, dtype='float64')
+        float_shape = (self.input_.shape[2:4] + 2 * pad
+                       - pool_shape) / pool_stride + 1
+        output_shape = T.cast(T.ceil(float_shape), dtype='int64')
+        self.expression_ = pooled[:, :, 0:output_shape[0],
+                                        0:output_shape[1]]
 
 
 class ZeroPad(object):
-    """Zero-padding using a convolution with an appropriate padded Dirac.
-    Any input welcome as to how to make this more simple.
+    """Zero-padding using set_subtensor
 
-    TODO: Use T.setsubtensor !!
     """
 
     def __init__(self, padding=1, input_dtype='float32'):
@@ -383,19 +469,48 @@ class Relu(object):
 
 
 class LRN(object):
-    def __init__(self, input_type=T.tensor4):
+    def __init__(self, normalization_size, 
+                 normalization_factor,
+                 normalization_exponent,
+                 axis='channels', input_type=T.tensor4):
+        self.normalization_size = normalization_size
+        self.normalization_factor = normalization_factor
+        self.normalization_exponent = normalization_exponent
+        self.axis = axis
         self.input_type = input_type
 
         self._build_expression()
 
     def _build_expression(self, input_tensor=None):
+        if self.axis != 'channels':
+            raise NotImplementedError("Only implemented for channels "
+                                      "at this moment")
+        if self.normalization_size % 2 == 0:
+            raise ValueError("Only accepting odd sized pooling regions"
+                             " in order to be able to identify a midpoint.")
+
         if input_tensor is None:
             self.input_ = self.input_type()
         else:
             self.input_ = input_tensor
 
-        # TODO: ACTUALLY IMPLEMENT LRN
-        self.expression_ = self.input_
+        # Implement local response normalization across channels by reshaping
+        # and using conv2d with a 1D filter and cropping properly ...
+        nsize = self.normalization_size
+        fil = (T.ones((1, 1, nsize, 1),
+                     dtype=self.input_.dtype)
+               / self.normalization_size
+               * self.normalization_factor)
+        local_mean = T.nnet.conv2d(
+            self.input_.reshape(
+                (self.input_.shape[0], 1, self.input_.shape[1], -1)) ** 2,
+            fil, border_mode='full')[
+            :, :, nsize // 2:-(nsize // 2), :].reshape(
+            (self.input_.shape[0], -1,
+             self.input_.shape[2], self.input_.shape[3]))
+
+        self.expression_ = self.input_ / ((1 + local_mean) **
+                                             self.normalization_exponent)
 
 
 def fuse(building_blocks, fuse_dim=4, input_variables=None, entry_expression=None,
