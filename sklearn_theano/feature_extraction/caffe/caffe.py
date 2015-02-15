@@ -248,7 +248,7 @@ def parse_caffe_model(caffe_model, float_dtype='float32'):
             pad_w = max(layer['pooling_param__pad_w'], pad)
             pool_types = {0: 'max', 1: 'avg'} 
             pool_type = pool_types[layer['pooling_param__pool']]
-            print "POOL TYPE is %s" % pool_type
+            # print "POOL TYPE is %s" % pool_type
             # pooling = FancyMaxPool((kernel_h, kernel_w),
             #                        (stride_h, stride_w),
             #                        ignore_border=False)
@@ -264,9 +264,17 @@ def parse_caffe_model(caffe_model, float_dtype='float32'):
             # at the learning stage, not at the prediction stage.
             pass
         elif layer_type == "SOFTMAX_LOSS":
-            # SOFTMAX_LOSS is used at training time. At prediction time, we
-            # should replace it with a soft max.
-            pass
+            softmax_input = blobs[bottom_blobs[0]]
+            # have to write our own softmax expression, because of shape
+            # issues
+            si = softmax_input.reshape((softmax_input.shape[0],
+                                        softmax_input.shape[1], -1))
+            shp = (si.shape[0], 1, si.shape[2])
+            exp = T.exp(si - si.max(axis=1).reshape(shp))
+            softmax_expression = (exp / exp.sum(axis=1).reshape(shp)
+                                  ).reshape(softmax_input.shape)
+            layers[layer_name] = "SOFTMAX"
+            blobs[top_blobs[0]] = softmax_expression
         elif layer_type == "SPLIT":
             split_input = blobs[bottom_blobs[0]]
             for top_blob in top_blobs:
@@ -292,10 +300,12 @@ def parse_caffe_model(caffe_model, float_dtype='float32'):
             blobs[top_blobs[0]] = output_expression
             layers[layer_name] = "CONCAT"
         elif layer_type == "INNER_PRODUCT":
-            weights = layer_blobs[0].astype(float_dtype).squeeze()
+            weights = layer_blobs[0].astype(float_dtype)
             biases = layer_blobs[1].astype(float_dtype).squeeze()
             fully_connected_input = blobs[bottom_blobs[0]]
-            fc_layer = Feedforward(weights, biases, activation=None)
+            # fc_layer = Feedforward(weights, biases, activation=None)
+            fc_layer = Convolution(weights.transpose((2, 3, 0, 1)), biases,
+                                   activation=None)
             fc_layer._build_expression(fully_connected_input)
             layers[layer_name] = fc_layer
             blobs[top_blobs[0]] = fc_layer.expression_
@@ -350,13 +360,15 @@ if __name__ == "__main__":
 
     d = np.load("camera.npz")
 
-    blob_of_interest = d['blob_names'][119]
+    blob_of_interest = d['blob_names'][120]
     # blob_of_interest = p[3]['name']
     print "Looking at blob %s" % blob_of_interest
 
+    l = d[blob_of_interest]
+    if blob_of_interest == 'prob':
+        blob_of_interest = 'loss3/loss3'
     expr = pb[1][blob_of_interest]
     f = theano.function([inp], expr)
-    l = d[blob_of_interest]
     k = f(c)
 
 
