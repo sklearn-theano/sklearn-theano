@@ -1,9 +1,11 @@
 """Makes .caffemodel files readable for sklearn-theano"""
+from __future__ import print_function
 import os
 import numpy as np
 from collections import OrderedDict
 import theano
 import theano.tensor as T
+
 
 
 def _compile_caffe_protobuf(caffe_proto=None,
@@ -17,13 +19,15 @@ def _compile_caffe_protobuf(caffe_proto=None,
             raise ValueError("Cannot find $CAFFE environment variable"
                              " specifying location of Caffe files. Please"
                              " provide path to caffe.proto file in the"
-                             " caffe_proto kwarg")
+                             " caffe_proto kwarg, e.g. "
+                             "/home/user/caffe/src/caffe/proto/caffe.proto")
         caffe_proto = os.path.join(caffe_dir, "src", "caffe", "proto",
                                   "caffe.proto")
     if not os.path.exists(caffe_proto):
         raise ValueError(
-            "Could not find {pf}. Please specify the correct"
-            " caffe.proto file in the caffe_proto kwarg".format(
+            ("Could not find {pf}. Please specify the correct"
+             " caffe.proto file in the caffe_proto kwarg"
+             " e.g. /home/user/caffe/src/caffe/proto/caffe.proto").format(
                 pf=caffe_proto))
 
     if proto_src_dir is None:
@@ -44,23 +48,19 @@ def _compile_caffe_protobuf(caffe_proto=None,
             "Error executing protoc: code {c}, message {m}".format(
                 c=status, m=output))
 
-try:
-    import caffe_pb2
-except:
-    # If compiled protocol buffer does not exist yet, compile it
-    _compile_caffe_protobuf()
-    import caffe_pb2
-
-_layer_types = caffe_pb2.LayerParameter.LayerType.items()
-
-# create a dictionary that indexes both ways, number->name, name->number
-layer_types = dict(_layer_types)
-for v, k in _layer_types:
-    layer_types[k] = v
+def _get_caffe_pb2():
+    try:
+        import caffe_pb2
+    except:
+        # If compiled protocol buffer does not exist yet, compile it
+        _compile_caffe_protobuf()
+        import caffe_pb2
+    return caffe_pb2
 
 
 def _open_caffe_model(caffemodel_file):
     """Opens binary format .caffemodel files. Returns protobuf object."""
+    caffe_pb2 = _get_caffe_pb2()
     binary_content = open(caffemodel_file, "rb").read()
     protobuf = caffe_pb2.NetParameter()
     protobuf.ParseFromString(binary_content)
@@ -122,6 +122,15 @@ def _get_property(obj, property_path):
 
 
 def _parse_caffe_model(caffe_model):
+
+    caffe_pb2 = _get_caffe_pb2()  # need to remove this dependence on pb here
+    _layer_types = caffe_pb2.LayerParameter.LayerType.items()
+
+    # create a dictionary that indexes both ways, number->name, name->number
+    layer_types = dict(_layer_types)
+    for v, k in _layer_types:
+        layer_types[k] = v
+
     if not hasattr(caffe_model, "layers"):
         # Consider it a filename
         caffe_model = _open_caffe_model(caffe_model)
@@ -132,8 +141,8 @@ def _parse_caffe_model(caffe_model):
         ltype = layer_types[layer.type]
         layer_descriptor = dict(type=ltype,
                                 name=layer.name,
-                                top_blobs=layer.top,
-                                bottom_blobs=layer.bottom)
+                                top_blobs=tuple(layer.top),
+                                bottom_blobs=tuple(layer.bottom))
         parsed.append(layer_descriptor)
         # specific properties
         specifics = LAYER_PROPERTIES[ltype]
@@ -155,7 +164,7 @@ from sklearn_theano.base import (Convolution, Relu, MaxPool, FancyMaxPool,
                                  CaffePool)
 
 
-def parse_caffe_model(caffe_model, float_dtype='float32'):
+def parse_caffe_model(caffe_model, float_dtype='float32', verbose=0):
 
     if isinstance(caffe_model, str) or not isinstance(caffe_model, list):
         parsed_caffe_model = _parse_caffe_model(caffe_model)
@@ -174,7 +183,8 @@ def parse_caffe_model(caffe_model, float_dtype='float32'):
         bottom_blobs = layer['bottom_blobs']
         layer_blobs = layer.get('blobs', None)
 
-        print "%d\t%s\t%s" % (i, layer_type, layer_name)
+        if verbose > 0:
+            print("%d\t%s\t%s" % (i, layer_type, layer_name))
         if layer_type == 'DATA':
             # DATA layers contain input data in top_blobs, create input
             # variables, float for 'data' and int for 'label'
@@ -362,7 +372,7 @@ if __name__ == "__main__":
 
     blob_of_interest = d['blob_names'][120]
     # blob_of_interest = p[3]['name']
-    print "Looking at blob %s" % blob_of_interest
+    print("Looking at blob %s" % blob_of_interest)
 
     l = d[blob_of_interest]
     if blob_of_interest == 'prob':
