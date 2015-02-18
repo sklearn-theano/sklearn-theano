@@ -359,10 +359,9 @@ class CaffePool(object):
 
         # Replicating caffe style pooling means zero padding
         # then strided pooling with ignore_border=True
-        # if self.padding in [0, (0, 0)]:
-        #     padded_input = self.input_
-        # else:
-        if True:
+        if self.padding in [0, (0, 0)]:
+            padded_input = self.input_
+        else:
             zero_padder = ZeroPad(padding=self.padding)
             zero_padder._build_expression(self.input_)
             padded_input = zero_padder.expression_
