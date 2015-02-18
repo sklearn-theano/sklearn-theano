@@ -43,8 +43,8 @@ top level of the repository https://github.com/sklearn-theano/sklearn-theano/blo
 
 This project provides downloaders for models that are distributed under their own terms, namely:
     * The OverFeat model http://cilvr.nyu.edu/doku.php?id=code:start
-    * The BVLC CAFFE GoogLeNet model http://caffe.berkeleyvision.org/
+    * The BVLC Caffe GoogLeNet model http://caffe.berkeleyvision.org/
 
-The model specification for the BVLC CAFFE GoogLeNet model are taken from a
+The model specification for the BVLC Caffe GoogLeNet model are taken from a
 protocol buffer file, https://raw.githubusercontent.com/BVLC/caffe/master/src/caffe/proto/caffe.proto which is distributed under the same licence as the Caffe code (2-clause BSD).
 
