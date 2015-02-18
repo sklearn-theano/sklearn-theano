@@ -7,7 +7,6 @@ import numbers
 import numpy as np
 import theano.tensor as T
 from theano.tensor.signal.downsample import max_pool_2d
-from scipy.sparse import dia_matrix
 
 
 def _relu(x):
