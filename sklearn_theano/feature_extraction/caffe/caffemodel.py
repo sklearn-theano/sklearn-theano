@@ -5,7 +5,21 @@ import numpy as np
 from collections import OrderedDict
 import theano
 import theano.tensor as T
+from ...datasets import get_dataset_dir, download
 
+
+def _get_caffe_dir():
+    """Function to find caffe installation. First checks for pycaffe. If not
+    present, checks for $CAFFE_DIR environment variable."""
+
+    try:
+        import caffe
+        from os.path import dirname
+        caffe_dir = dirname(dirname(dirname(caffe.__file__)))
+    except ImportError:
+        caffe_dir = os.environ.get("CAFFE_DIR", None)
+
+    return caffe_dir
 
 
 def _compile_caffe_protobuf(caffe_proto=None,
@@ -14,14 +28,28 @@ def _compile_caffe_protobuf(caffe_proto=None,
     """Compiles protocol buffer to python_out_dir"""
 
     if caffe_proto is None:
-        caffe_dir = os.environ.get("CAFFE", None)
+        caffe_dir = _get_caffe_dir()
         if caffe_dir is None:
-            raise ValueError("Cannot find $CAFFE environment variable"
-                             " specifying location of Caffe files. Please"
-                             " provide path to caffe.proto file in the"
-                             " caffe_proto kwarg, e.g. "
-                             "/home/user/caffe/src/caffe/proto/caffe.proto")
-        caffe_proto = os.path.join(caffe_dir, "src", "caffe", "proto",
+            # No CAFFE_DIR found, neither could pycaffe be imported.
+            # Search for caffe.proto locally
+            caffe_dataset_dir = get_dataset_dir('caffe')
+            caffe_proto = os.path.join(caffe_dataset_dir, 'caffe.proto')
+            if os.path.exists(caffe_proto):
+                # Found caffe.proto, everything fine
+                pass
+            else:
+                print("Downloading caffe.proto")
+                url = ('https://raw.githubusercontent.com/'
+                       'BVLC/caffe/master/src/caffe/proto/caffe.proto')
+                download(url, caffe_proto, progress_update_percentage=1)
+            # raise ValueError("Cannot find $CAFFE_DIR environment variable"
+            #                  " specifying location of Caffe files."
+            #                  " Nor does there seem to be pycaffe. Please"
+            #                  " provide path to caffe.proto file in the"
+            #                  " caffe_proto kwarg, e.g. "
+            #                  "/home/user/caffe/src/caffe/proto/caffe.proto")
+        else:
+            caffe_proto = os.path.join(caffe_dir, "src", "caffe", "proto",
                                   "caffe.proto")
     if not os.path.exists(caffe_proto):
         raise ValueError(
