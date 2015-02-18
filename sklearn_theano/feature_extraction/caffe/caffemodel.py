@@ -348,9 +348,8 @@ def parse_caffe_model(caffe_model, float_dtype='float32', verbose=0):
             layers[layer_name] = fc_layer
             blobs[top_blobs[0]] = fc_layer.expression_
         else:
-            import IPython
-            IPython.embed()
-
+            raise ValueError('layer type %s is not known to sklearn-theano'
+                             % layer_type)
     return layers, blobs, inputs
 
 
