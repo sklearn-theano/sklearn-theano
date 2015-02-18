@@ -23,8 +23,8 @@ def test_googlenet_transformer():
 def test_googlenet_classifier():
     """smoke test for googlenet classifier"""
     if os.environ.get('CI', None) is not None:
-        raise SkipTest()
-    c = GoogLeNetClassifier("Skipping heavy data loading on CI")
+        raise SkipTest("Skipping heavy data loading on CI")
+    c = GoogLeNetClassifier()
 
     c.predict(co)
     c.predict(ca)
