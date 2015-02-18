@@ -42,10 +42,9 @@ The License for sklearn-theano is 3-clause BSD. See the `LICENSE` file in the
 top level of the repository https://github.com/sklearn-theano/sklearn-theano/blob/master/LICENSE
 
 This project provides downloaders for models that are distributed under the terms of their owners:
-
-    * The OverFeat model http://cilvr.nyu.edu/doku.php?id=code:start 
-    https://github.com/sermanet/OverFeat/blob/master/LICENSE
+    * The OverFeat model http://cilvr.nyu.edu/doku.php?id=code:start https://github.com/sermanet/OverFeat/blob/master/LICENSE
     * The BVLC CAFFE GoogLeNet model https://github.com/BVLC/caffe/blob/master/LICENCE
 
 The model specification for the BVLC CAFFE GoogLeNet model are taken from a
 protocol buffer file, https://raw.githubusercontent.com/BVLC/caffe/master/src/caffe/proto/caffe.proto which is distributed under the same licence as the CAFFE code (2-clause BSD).
+
