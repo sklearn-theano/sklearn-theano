@@ -1,4 +1,4 @@
-"""Wrapper for bvlc caffe googlenet."""
+"""Parser for bvlc caffe googlenet."""
 # Authors: Michael Eickenberg
 #          Kyle Kastner
 # License: BSD 3 Clause
