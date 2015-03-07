@@ -152,7 +152,10 @@ def _get_property(obj, property_path):
 def _parse_caffe_model(caffe_model):
 
     caffe_pb2 = _get_caffe_pb2()  # need to remove this dependence on pb here
-    _layer_types = caffe_pb2.V1LayerParameter.LayerType.items()
+    try:
+        _layer_types = caffe_pb2.LayerParameter.LayerType.items()
+    except AttributeError:
+        _layer_types = caffe_pb2.V1LayerParameter.LayerType.items()
 
     # create a dictionary that indexes both ways, number->name, name->number
     layer_types = dict(_layer_types)
