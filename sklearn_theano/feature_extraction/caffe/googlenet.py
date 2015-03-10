@@ -44,14 +44,14 @@ def fetch_googlenet_protobuffer_file(caffemodel_file=None):
         if not os.path.exists(GOOGLENET_PATH):
             os.makedirs(GOOGLENET_PATH)
 
-    url = "http://dl.caffe.berkeleyvision.org/bvlc_googlenet.caffemodel"
+    url = "https://dl.dropboxusercontent.com/u/15378192/bvlc_googlenet.caffemodel"
     download(url, caffemodel_file, progress_update_percentage=1)
     return caffemodel_file
 
 
 def fetch_googlenet_architecture(caffemodel_parsed=None,
                                  caffemodel_protobuffer=None):
-    """Fetch a pickled version of the caffe model, represented as list of 
+    """Fetch a pickled version of the caffe model, represented as list of
     dictionaries."""
 
     default_filename = os.path.join(GOOGLENET_PATH, 'bvlc_googlenet.pickle')
