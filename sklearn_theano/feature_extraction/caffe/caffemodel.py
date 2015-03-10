@@ -77,12 +77,7 @@ def _compile_caffe_protobuf(caffe_proto=None,
                 c=status, m=output))
 
 def _get_caffe_pb2():
-    try:
-        import caffe_pb2
-    except:
-        # If compiled protocol buffer does not exist yet, compile it
-        _compile_caffe_protobuf()
-        import caffe_pb2
+    from ...models.bvlc_googlenet import caffe_pb2
     return caffe_pb2
 
 
@@ -287,7 +282,7 @@ def parse_caffe_model(caffe_model, float_dtype='float32', verbose=0):
             pad = layer['pooling_param__pad']
             pad_h = max(layer['pooling_param__pad_h'], pad)
             pad_w = max(layer['pooling_param__pad_w'], pad)
-            pool_types = {0: 'max', 1: 'avg'} 
+            pool_types = {0: 'max', 1: 'avg'}
             pool_type = pool_types[layer['pooling_param__pool']]
             # print "POOL TYPE is %s" % pool_type
             # pooling = FancyMaxPool((kernel_h, kernel_w),
