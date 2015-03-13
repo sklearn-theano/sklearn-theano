@@ -1,5 +1,5 @@
 from skimage.data import coffee, camera
-from sklearn_theano.feature_extraction.caffe.googlenet import (
+from sklearn_theano.feature_extraction import (
     GoogLeNetTransformer, GoogLeNetClassifier)
 import numpy as np
 from nose import SkipTest
@@ -28,4 +28,3 @@ def test_googlenet_classifier():
 
     c.predict(co)
     c.predict(ca)
-

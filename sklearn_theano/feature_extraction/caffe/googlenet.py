@@ -8,10 +8,9 @@ from ...datasets import get_dataset_dir, download
 from caffemodel import _parse_caffe_model, parse_caffe_model
 import os
 from ...utils import check_tensor
-from ..overfeat import get_overfeat_class_label
+from googlenet_class_labels import get_googlenet_class_label
 from sklearn.base import BaseEstimator, TransformerMixin
 import theano
-import theano.tensor as T
 import numpy as np
 
 GOOGLENET_PATH = get_dataset_dir("caffe/bvlc_googlenet")
@@ -126,7 +125,6 @@ class GoogLeNetTransformer(BaseEstimator, TransformerMixin):
 
         self.transform_function = _get_fprop(output_layers)
 
-
     def fit(self, X, y):
         """Passthrough function for sklearn compatibility"""
         pass
@@ -165,7 +163,7 @@ class GoogLeNetTransformer(BaseEstimator, TransformerMixin):
 
 class GoogLeNetClassifier(BaseEstimator):
     """
-    A classifier for cropped images using the OverFeat neural network.
+    A classifier for cropped images using the GoogLeNet neural network.
 
     Image will be cropped to center 224x224 pixels
 
@@ -220,7 +218,6 @@ class GoogLeNetClassifier(BaseEstimator):
                     *self.transpose_order))[0]
         return res
 
-
     def predict(self, X):
         """
         Classify a set of cropped input images.
@@ -251,7 +248,7 @@ class GoogLeNetClassifier(BaseEstimator):
             class_strings = np.empty_like(indices,
                                           dtype=object)
             for index, value in enumerate(indices.flat):
-                class_strings.flat[index] = get_overfeat_class_label(value)
+                class_strings.flat[index] = get_googlenet_class_label(value)
             return class_strings
         else:
             return indices
@@ -277,5 +274,3 @@ class GoogLeNetClassifier(BaseEstimator):
         X = check_tensor(X, dtype=np.float32, n_dim=4)
         res = self._predict_proba(X)[:, :, 0, 0]
         return np.sort(res, axis=1)[:, -self.top_n:]
-
-
