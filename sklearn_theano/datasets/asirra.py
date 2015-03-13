@@ -21,6 +21,8 @@ def check_fetch_asirra():
         os.makedirs(partial_path)
     if not os.path.exists(full_path):
         download(url, full_path, progress_update_percentage=1)
+    files_path = os.path.join(partial_path, "PetImages")
+    if not os.path.exists(files_path):
         tar_obj = tarfile.TarFile(full_path, 'r')
         tar_obj.extractall(partial_path)
         tar_obj.close()

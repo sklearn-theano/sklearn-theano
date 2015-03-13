@@ -39,3 +39,29 @@ transformation, classification, and localization.
 
 
     * :ref:`plot_multiple_localization.py`
+
+GoogLeNet
+========
+
+Another state of the art neural network from Google is known as GoogLeNet:
+
+C. Szegedy, W. Liu, Y. Jia, P. Sermanet, S. Reed, D. Anguelov, D. Erhan, V. Vanhoucke, A. Rabinovich. *Going Deeper with Convolutions*, arXiv:1409.4842, September 2014.
+
+Various layers of this neural network can be used for
+transformation and classification.
+
+.. autosummary::
+
+    :toctree: ../modules/generated/
+    :template: class.rst
+
+    GoogLeNetTransformer
+    GoogLeNetClassifier
+
+.. image:: ../auto_examples/images/plot_comparison_001.png
+   :target: ../auto_examples/plot_comparison.html
+   :scale: 30
+.. topic:: Examples:
+
+
+    * :ref:`plot_comparison.py`
