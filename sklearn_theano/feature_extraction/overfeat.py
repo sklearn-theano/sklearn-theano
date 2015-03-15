@@ -280,11 +280,15 @@ class OverfeatTransformer(BaseEstimator, TransformerMixin):
         then convolution and relu are one unit and zero-padding layers are
         omitted.
 
+    batch_size : int, optional (default=None)
+        If set, input will be transformed in batches of size batch_size. This
+        can save memory at intermediate processing steps.
     """
     def __init__(self, large_network=False, output_layers=[-1],
                  force_reshape=True,
                  transpose_order=(0, 3, 1, 2),
-                 detailed_network=False):
+                 detailed_network=False,
+                 batch_size=None):
         self.large_network = large_network
         self.output_layers = output_layers
         self.force_reshape = force_reshape
@@ -292,6 +296,7 @@ class OverfeatTransformer(BaseEstimator, TransformerMixin):
         self.transform_function = _get_fprop(self.large_network,
                                              output_layers,
                                              detailed=detailed_network)
+        self.batch_size = batch_size
 
     def fit(self, X, y=None):
         """Passthrough for scikit-learn pipeline compatibility."""
@@ -321,11 +326,42 @@ class OverfeatTransformer(BaseEstimator, TransformerMixin):
             Returns the features extracted for each of the n_images in X..
         """
         X = check_tensor(X, dtype=np.float32, n_dim=4)
-        if self.force_reshape:
-            return self.transform_function(X.transpose(
-                *self.transpose_order))[0].reshape((len(X), -1))
+        if self.batch_size is None:
+            if self.force_reshape:
+                return self.transform_function(X.transpose(
+                        *self.transpose_order))[0].reshape((len(X), -1))
+            else:
+                return self.transform_function(
+                    X.transpose(*self.transpose_order))
         else:
-            return self.transform_function(X.transpose(*self.transpose_order))
+            XT = X.transpose(*self.transpose_order)
+            n_samples = XT.shape[0]
+            for i in range(0, n_samples, self.batch_size):
+                transformed_batch = self.transform_function(
+                    XT[i:i + self.batch_size])
+                # at first iteration, initialize output arrays to correct size
+                if i == 0:
+                    shapes = [(n_samples,) + t.shape[1:] for t in
+                              transformed_batch]
+                    ravelled_shapes = [np.prod(shp[1:]) for shp in shapes]
+                    if self.force_reshape:
+                        output_width = np.sum(ravelled_shapes)
+                        output = np.empty((n_samples, output_width),
+                                          dtype=transformed_batch[0].dtype)
+                        break_points = np.r_([0], np.cumsum(ravelled_shapes))
+                        raw_output = [
+                            output[:, start:stop] for start, stop in
+                            zip(break_points[:-1], break_points[1:])]
+                    else:
+                        output = [np.empty(shape,
+                                           dtype=transformed_batch.dtype)
+                                  for shape in shapes]
+                        raw_output = [arr.reshape(n_samples, -1)
+                                      for arr in output]
+
+                for transformed, out in zip(transformed_batch, raw_output):
+                    out[i:i + batch_size] = transformed
+        return output
 
 
 class OverfeatClassifier(BaseEstimator):
