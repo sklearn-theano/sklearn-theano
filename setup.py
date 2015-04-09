@@ -14,7 +14,7 @@ setuptools.setup(
     url='http://github.com/sklearn-theano/sklearn-theano/',
     install_requires=['numpy',
                       'scipy',
-                      'theano',
+                      'Theano',
                       'Pillow',
                       'scikit-learn'],
     classifiers=['Development Status :: 3 - Alpha',
