@@ -1,0 +1,6 @@
+include *.rst
+recursive-include sklearn_theano *.json *.txt
+recursive-include sklearn_theano/datasets *.jpg *.png
+include LICENSE 
+include AUTHORS.rst
+include README.rst
