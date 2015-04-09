@@ -5,7 +5,7 @@ setuptools.setup(
     name='sklearn-theano',
     version='0.0.1',
     packages=setuptools.find_packages(),
-    package_data={"": ['*.jpg', '*.png', '*.json']},
+    package_data={"": ['*.jpg', '*.png', '*.json', '*.txt']},
     author='Kyle Kastner',
     author_email='kastnerkyle@gmail.com',
     description='Scikit-learn compatible estimators using Theano',
