@@ -9,6 +9,7 @@ from caffemodel import _parse_caffe_model, parse_caffe_model
 import os
 from ...utils import check_tensor
 from googlenet_class_labels import get_googlenet_class_label
+from googlenet_layer_names import get_googlenet_layer_names
 from sklearn.base import BaseEstimator, TransformerMixin
 import theano
 import numpy as np
@@ -117,6 +118,8 @@ class GoogLeNetTransformer(BaseEstimator, TransformerMixin):
         force_reshape currently only supports len(output_layers) == 1!
     """
 
+    layer_names = get_googlenet_layer_names()
+
     def __init__(self, output_layers=('loss3/classifier',),
                  force_reshape=True, transpose_order=(0, 3, 1, 2)):
         self.output_layers = output_layers
@@ -183,6 +186,7 @@ class GoogLeNetClassifier(BaseEstimator):
 
     """
     min_size = (224, 224)
+    layer_names = get_googlenet_layer_names()
 
     def __init__(self, top_n=5, large_network=False, output_strings=True,
                  transpose_order=(0, 3, 1, 2)):
