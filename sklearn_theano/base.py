@@ -2,6 +2,7 @@
 #          Kyle Kastner
 # License: BSD 3 clause
 
+from __future__ import print_function
 import theano
 import numbers
 import numpy as np
@@ -317,8 +318,8 @@ class FancyMaxPool(object):
             self.input_ = T.tensor4(dtype=self.input_dtype)
         else:
             self.input_ = input_expression
-        print "Pooling: shape %s stride %s" % (str(self.pool_shape),
-                                               str(self.pool_stride))
+        print("Pooling: shape %s stride %s" % (str(self.pool_shape),
+                                               str(self.pool_stride)))
         if self.pool_stride == self.pool_shape:
             self.expression_ = T.signal.downsample.max_pool_2d(
                 self.input_, self.pool_shape,
