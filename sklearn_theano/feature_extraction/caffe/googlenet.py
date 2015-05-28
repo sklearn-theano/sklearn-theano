@@ -7,7 +7,7 @@ from sklearn.externals import joblib
 from ...datasets import get_dataset_dir, download
 from caffemodel import _parse_caffe_model, parse_caffe_model
 import os
-from ...utils import check_tensor
+from ...utils import check_tensor, get_minibatch_indices
 from googlenet_class_labels import get_googlenet_class_label
 from googlenet_layer_names import get_googlenet_layer_names
 from sklearn.base import BaseEstimator, TransformerMixin
@@ -116,16 +116,24 @@ class GoogLeNetTransformer(BaseEstimator, TransformerMixin):
         Whether or not to force the output to be two dimensional. If true,
         this class can be used as part of a scikit-learn pipeline.
         force_reshape currently only supports len(output_layers) == 1!
+
+    batch_size: int, optional (default=None)
+       Size of the minibatches to process. Setting this number can reduce
+       memory consumption or allow for processing of out-of-core data
+       such as HDF5 or numpy memmap files.
+       Default of None corresponds to no minibatches. This should
+       be faster but consumes more memory.
     """
 
     layer_names = get_googlenet_layer_names()
 
     def __init__(self, output_layers=('loss3/classifier',),
-                 force_reshape=True, transpose_order=(0, 3, 1, 2)):
+                 force_reshape=True, batch_size=None,
+                 transpose_order=(0, 3, 1, 2)):
         self.output_layers = output_layers
         self.force_reshape = force_reshape
+        self.batch_size = batch_size
         self.transpose_order = transpose_order
-
         self.transform_function = _get_fprop(output_layers)
 
     def fit(self, X, y):
@@ -157,11 +165,26 @@ class GoogLeNetTransformer(BaseEstimator, TransformerMixin):
         """
 
         X = check_tensor(X, dtype=np.float32, n_dim=4)
-        if self.force_reshape:
-            return self.transform_function(X.transpose(
-                *self.transpose_order))[0].reshape((len(X), -1))
+
+        def output(X):
+            if self.force_reshape:
+                return self.transform_function(X.transpose(
+                    *self.transpose_order))[0].reshape((len(X), -1))
+            else:
+                return self.transform_function(X.transpose(
+                    *self.transpose_order))
+
+        if self.batch_size is not None:
+            res = [output(X[i:j]) for i, j in get_minibatch_indices(
+                X, self.batch_size)]
+            if self.force_reshape is False:
+                # Need to stick layer outputs together before stacking...
+                return [np.vstack([res[i][idx] for i in range(len(res))])
+                        for idx in range(len(res[0]))]
+            else:
+                return np.vstack(res)
         else:
-            return self.transform_function(X.transpose(*self.transpose_order))
+            return output(X)
 
 
 class GoogLeNetClassifier(BaseEstimator):
