@@ -3,6 +3,29 @@
 import numpy as np
 
 
+def get_minibatch_indices(array, minibatch_size):
+    """ Get indices for minibatch processing.
+
+    Parameters
+    ----------
+    array : object
+        Input object to get indices for
+
+    minibatch_size : int
+        Size of minibatches
+
+    Returns
+    -------
+    list_of_indices : object
+        A list of (start_index, end_index) tuples.
+    """
+    minibatch_indices = np.arange(0, len(array), minibatch_size)
+    minibatch_indices = np.asarray(list(minibatch_indices) + [len(array)])
+    start_indices = minibatch_indices[:-1]
+    end_indices = minibatch_indices[1:]
+    return zip(start_indices, end_indices)
+
+
 def check_tensor(array, dtype=None, order=None, n_dim=None, copy=False):
     """Input validation on an array, or list.
 
