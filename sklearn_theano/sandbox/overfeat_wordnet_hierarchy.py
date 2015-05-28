@@ -1,3 +1,4 @@
+from __future__ import print_function
 import numpy as np
 from nltk.corpus import wordnet
 from sklearn_theano.feature_extraction.overfeat_class_labels import (
@@ -18,7 +19,7 @@ hypernym_paths = [synset.hypernym_paths() for synset in synsets]
 
 hierarchy = dict()
 for synset, hpaths in zip(synsets, hypernym_paths):
-    print synset
+    print(synset)
     hierarchy[synset.name()] = hierarchy.get(synset.name(),
                                              dict(children=[], parents=[]))
     for hpath in hpaths:
