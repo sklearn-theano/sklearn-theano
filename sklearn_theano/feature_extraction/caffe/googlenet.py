@@ -5,11 +5,11 @@
 
 from sklearn.externals import joblib
 from ...datasets import get_dataset_dir, download
-from caffemodel import _parse_caffe_model, parse_caffe_model
+from .caffemodel import _parse_caffe_model, parse_caffe_model
 import os
 from ...utils import check_tensor, get_minibatch_indices
-from googlenet_class_labels import get_googlenet_class_label
-from googlenet_layer_names import get_googlenet_layer_names
+from .googlenet_class_labels import get_googlenet_class_label
+from .googlenet_layer_names import get_googlenet_layer_names
 from sklearn.base import BaseEstimator, TransformerMixin
 import theano
 import numpy as np
@@ -44,7 +44,8 @@ def fetch_googlenet_protobuffer_file(caffemodel_file=None):
         if not os.path.exists(GOOGLENET_PATH):
             os.makedirs(GOOGLENET_PATH)
 
-    url = "https://dl.dropboxusercontent.com/u/15378192/bvlc_googlenet.caffemodel"
+    url = "https://dl.dropboxusercontent.com/u/15378192/"
+    url += "bvlc_googlenet.caffemodel"
     download(url, caffemodel_file, progress_update_percentage=1)
     return caffemodel_file
 

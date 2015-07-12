@@ -237,11 +237,11 @@ def _gcd(num1, num2):
 
 def _lcm(num1, num2):
     """Calculate least common multiple of num1 and num2"""
-    return num1 * num2 / _gcd(num1, num2)
+    return num1 * num2 // _gcd(num1, num2)
 
 
 def fancy_max_pool(input_tensor, pool_shape, pool_stride,
-                    ignore_border=False):
+                   ignore_border=False):
     """Using theano built-in maxpooling, create a more flexible version.
 
     Obviously suboptimal, but gets the work done."""
@@ -257,7 +257,7 @@ def fancy_max_pool(input_tensor, pool_shape, pool_stride,
         pool_stride = pool_stride * 2
 
     lcmh, lcmw = [_lcm(p, s) for p, s in zip(pool_shape, pool_stride)]
-    dsh, dsw = lcmh / pool_shape[0], lcmw / pool_shape[1]
+    dsh, dsw = lcmh // pool_shape[0], lcmw // pool_shape[1]
 
     pre_shape = input_tensor.shape[:-2]
     length = T.prod(pre_shape)
@@ -269,8 +269,7 @@ def fancy_max_pool(input_tensor, pool_shape, pool_stride,
         sub_pool = []
         sub_pools.append(sub_pool)
         for sw in range(0, lcmw, pool_stride[1]):
-            full_pool = max_pool_2d(reshaped_input[:, sh:,
-                                                      sw:],
+            full_pool = max_pool_2d(reshaped_input[:, sh:, sw:],
                                     pool_shape, ignore_border=ignore_border)
             ds_pool = full_pool[:, ::dsh, ::dsw]
             concat_shape = T.concatenate([[length], ds_pool.shape[-2:]])
@@ -281,8 +280,8 @@ def fancy_max_pool(input_tensor, pool_shape, pool_stride,
     output = T.zeros(output_shape, dtype=input_tensor.dtype)
     for i, line in enumerate(sub_pools):
         for j, item in enumerate(line):
-            output = T.set_subtensor(output[:, i::lcmh / pool_stride[0],
-                                               j::lcmw / pool_stride[1]],
+            output = T.set_subtensor(output[:, i::lcmh // pool_stride[0],
+                                               j::lcmw // pool_stride[1]],
                                      item)
     return output.reshape(T.concatenate([pre_shape, output.shape[1:]]),
                           ndim=input_tensor.ndim)
@@ -326,8 +325,8 @@ class FancyMaxPool(object):
                 ignore_border=self.ignore_border)
         else:
             self.expression_ = fancy_max_pool(self.input_, self.pool_shape,
-                                          self.pool_stride,
-                                          self.ignore_border)
+                                              self.pool_stride,
+                                              self.ignore_border)
 
 
 class CaffePool(object):
@@ -468,7 +467,7 @@ class Relu(object):
 
 
 class LRN(object):
-    def __init__(self, normalization_size, 
+    def __init__(self, normalization_size,
                  normalization_factor,
                  normalization_exponent,
                  axis='channels', input_type=T.tensor4):

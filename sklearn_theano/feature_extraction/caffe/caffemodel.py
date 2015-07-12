@@ -76,6 +76,7 @@ def _compile_caffe_protobuf(caffe_proto=None,
             "Error executing protoc: code {c}, message {m}".format(
                 c=status, m=output))
 
+
 def _get_caffe_pb2():
     from ...models.bvlc_googlenet import caffe_pb2
     return caffe_pb2
@@ -84,7 +85,15 @@ def _get_caffe_pb2():
 def _open_caffe_model(caffemodel_file):
     """Opens binary format .caffemodel files. Returns protobuf object."""
     caffe_pb2 = _get_caffe_pb2()
-    binary_content = open(caffemodel_file, "rb").read()
+    try:
+        open(caffemodel_file, 'r', encoding="latin1").close()
+        f = open(caffemodel_file, 'r', encoding="latin1")
+    except TypeError:
+        # Python 2 does not have encoding arg
+        f = open(caffemodel_file, 'rb')
+    binary_content = f.read()
+    from IPython import embed; embed()
+    raise ValueError()
     protobuf = caffe_pb2.NetParameter()
     protobuf.ParseFromString(binary_content)
 
