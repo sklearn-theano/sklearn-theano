@@ -485,7 +485,7 @@ def StringDecoder(field_number, is_repeated, is_packed, key, new_default):
   def _ConvertToUnicode(byte_str):
     try:
       return local_unicode(byte_str, 'utf-8')
-    except UnicodeDecodeError, e:
+    except UnicodeDecodeError as e:
       # add more information to the error message and re-raise it.
       e.reason = '%s in field: %s' % (e, key.full_name)
       raise

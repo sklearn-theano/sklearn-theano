@@ -856,7 +856,7 @@ def _AddMergeFromStringMethod(message_descriptor, cls):
     except (IndexError, TypeError):
       # Now ord(buf[p:p+1]) == ord('') gets TypeError.
       raise message_mod.DecodeError('Truncated message.')
-    except struct.error, e:
+    except struct.error as e:
       raise message_mod.DecodeError(e)
     return length   # Return this for legacy reasons.
   cls.MergeFromString = MergeFromString
