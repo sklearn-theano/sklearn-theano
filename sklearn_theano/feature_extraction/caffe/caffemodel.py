@@ -92,8 +92,6 @@ def _open_caffe_model(caffemodel_file):
         # Python 2 does not have encoding arg
         f = open(caffemodel_file, 'rb')
     binary_content = f.read()
-    from IPython import embed; embed()
-    raise ValueError()
     protobuf = caffe_pb2.NetParameter()
     protobuf.ParseFromString(binary_content)
 
