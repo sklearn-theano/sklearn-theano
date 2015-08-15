@@ -60,6 +60,28 @@ def download(url, server_fname, local_fname=None, progress_update_percentage=5):
                 p += progress_update_percentage
 
 
+def load_images(filenames):
+    """Load images for image manipulation.
+
+    Parameters
+    ----------
+    filenames : iterable
+         Iterable of filename paths as strings
+
+    Returns
+    -------
+    data : Bunch
+        Dictionary-like object with the following attributes :
+        'images', the sample images, 'filenames', the file
+        names for the images
+    """
+    # Load image data for each image in the source folder.
+    images = [np.array(Image.open(filename, 'r')) for filename in filenames]
+
+    return Bunch(images=images,
+                 filenames=filenames)
+
+
 def load_sample_images():
     """Load sample images for image manipulation.
     Loads ``sloth``, ``sloth_closeup``, ``cat_and_dog``.
