@@ -78,19 +78,20 @@ def _compile_caffe_protobuf(caffe_proto=None,
 
 
 def _get_caffe_pb2():
+    import sys
+    this_file_path = os.path.realpath(__file__)
+    google_dir = str(os.sep).join(
+        this_file_path.split(os.sep)[:-3] + ['externals'])
+    sys.path.append(google_dir)
     from ...models.bvlc_googlenet import caffe_pb2
+    sys.path.remove(google_dir)
     return caffe_pb2
 
 
 def _open_caffe_model(caffemodel_file):
     """Opens binary format .caffemodel files. Returns protobuf object."""
     caffe_pb2 = _get_caffe_pb2()
-    try:
-        open(caffemodel_file, 'r', encoding="latin1").close()
-        f = open(caffemodel_file, 'r', encoding="latin1")
-    except TypeError:
-        # Python 2 does not have encoding arg
-        f = open(caffemodel_file, 'rb')
+    f = open(caffemodel_file, 'rb')
     binary_content = f.read()
     protobuf = caffe_pb2.NetParameter()
     protobuf.ParseFromString(binary_content)
@@ -183,8 +184,8 @@ def _parse_caffe_model(caffe_model):
             continue
         for param in specifics:
             if param == 'blobs':
-                layer_descriptor['blobs'] = map(_blob_to_ndarray,
-                                                layer.blobs)
+                layer_descriptor['blobs'] = list(map(_blob_to_ndarray,
+                                                     layer.blobs))
             else:
                 param_name = '__'.join(param)
                 param_value = _get_property(layer, param)

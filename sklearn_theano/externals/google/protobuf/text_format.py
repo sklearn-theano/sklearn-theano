@@ -28,20 +28,23 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#PY25 compatible for GAE.
-#
 # Copyright 2007 Google Inc. All Rights Reserved.
 
 """Contains routines for printing protocol messages in text format."""
 
 __author__ = 'kenton@google.com (Kenton Varda)'
 
-import cStringIO
+import io
 import re
 
-from internal import type_checkers
-import descriptor
-import text_encoding
+import six
+
+if six.PY3:
+  long = int
+
+from google.protobuf.internal import type_checkers
+from google.protobuf import descriptor
+from google.protobuf import text_encoding
 
 __all__ = ['MessageToString', 'PrintMessage', 'PrintField',
            'PrintFieldValue', 'Merge']
@@ -63,6 +66,25 @@ class Error(Exception):
 
 class ParseError(Error):
   """Thrown in case of ASCII parsing error."""
+
+class TextWriter(object):
+  def __init__(self, as_utf8):
+    if six.PY2:
+      self._writer = io.BytesIO()
+    else:
+      self._writer = io.StringIO()
+
+  def write(self, val):
+    if six.PY2:
+      if isinstance(val, six.text_type):
+        val = val.encode('utf-8')
+    return self._writer.write(val)
+
+  def close(self):
+    return self._writer.close()
+
+  def getvalue(self):
+    return self._writer.getvalue()
 
 
 def MessageToString(message, as_utf8=False, as_one_line=False,
@@ -89,7 +111,7 @@ def MessageToString(message, as_utf8=False, as_one_line=False,
   Returns:
     A string of the text formatted protocol buffer message.
   """
-  out = cStringIO.StringIO()
+  out = TextWriter(as_utf8)
   PrintMessage(message, out, as_utf8=as_utf8, as_one_line=as_one_line,
                pointy_brackets=pointy_brackets,
                use_index_order=use_index_order,
@@ -100,6 +122,10 @@ def MessageToString(message, as_utf8=False, as_one_line=False,
     return result.rstrip()
   return result
 
+def _IsMapEntry(field):
+  return (field.type == descriptor.FieldDescriptor.TYPE_MESSAGE and
+          field.message_type.has_options and
+          field.message_type.GetOptions().map_entry)
 
 def PrintMessage(message, out, indent=0, as_utf8=False, as_one_line=False,
                  pointy_brackets=False, use_index_order=False,
@@ -108,19 +134,32 @@ def PrintMessage(message, out, indent=0, as_utf8=False, as_one_line=False,
   if use_index_order:
     fields.sort(key=lambda x: x[0].index)
   for field, value in fields:
-    if field.label == descriptor.FieldDescriptor.LABEL_REPEATED:
+    if _IsMapEntry(field):
+      for key in sorted(value):
+        # This is slow for maps with submessage entires because it copies the
+        # entire tree.  Unfortunately this would take significant refactoring
+        # of this file to work around.
+        #
+        # TODO(haberman): refactor and optimize if this becomes an issue.
+        entry_submsg = field.message_type._concrete_class(
+            key=key, value=value[key])
+        PrintField(field, entry_submsg, out, indent, as_utf8, as_one_line,
+                   pointy_brackets=pointy_brackets,
+                   use_index_order=use_index_order, float_format=float_format)
+    elif field.label == descriptor.FieldDescriptor.LABEL_REPEATED:
       for element in value:
         PrintField(field, element, out, indent, as_utf8, as_one_line,
                    pointy_brackets=pointy_brackets,
+                   use_index_order=use_index_order,
                    float_format=float_format)
     else:
       PrintField(field, value, out, indent, as_utf8, as_one_line,
                  pointy_brackets=pointy_brackets,
+                 use_index_order=use_index_order,
                  float_format=float_format)
 
-
 def PrintField(field, value, out, indent=0, as_utf8=False, as_one_line=False,
-               pointy_brackets=False, float_format=None):
+               pointy_brackets=False, use_index_order=False, float_format=None):
   """Print a single field name/value pair.  For repeated fields, the value
   should be a single element."""
 
@@ -148,6 +187,7 @@ def PrintField(field, value, out, indent=0, as_utf8=False, as_one_line=False,
 
   PrintFieldValue(field, value, out, indent, as_utf8, as_one_line,
                   pointy_brackets=pointy_brackets,
+                  use_index_order=use_index_order,
                   float_format=float_format)
   if as_one_line:
     out.write(' ')
@@ -157,6 +197,7 @@ def PrintField(field, value, out, indent=0, as_utf8=False, as_one_line=False,
 
 def PrintFieldValue(field, value, out, indent=0, as_utf8=False,
                     as_one_line=False, pointy_brackets=False,
+                    use_index_order=False,
                     float_format=None):
   """Print a single field value (not including name).  For repeated fields,
   the value should be a single element."""
@@ -173,12 +214,14 @@ def PrintFieldValue(field, value, out, indent=0, as_utf8=False,
       out.write(' %s ' % openb)
       PrintMessage(value, out, indent, as_utf8, as_one_line,
                    pointy_brackets=pointy_brackets,
+                   use_index_order=use_index_order,
                    float_format=float_format)
       out.write(closeb)
     else:
       out.write(' %s\n' % openb)
       PrintMessage(value, out, indent + 2, as_utf8, as_one_line,
                    pointy_brackets=pointy_brackets,
+                   use_index_order=use_index_order,
                    float_format=float_format)
       out.write(' ' * indent + closeb)
   elif field.cpp_type == descriptor.FieldDescriptor.CPPTYPE_ENUM:
@@ -189,7 +232,7 @@ def PrintFieldValue(field, value, out, indent=0, as_utf8=False,
       out.write(str(value))
   elif field.cpp_type == descriptor.FieldDescriptor.CPPTYPE_STRING:
     out.write('\"')
-    if isinstance(value, unicode):
+    if isinstance(value, six.text_type):
       out_value = value.encode('utf-8')
     else:
       out_value = value
@@ -209,24 +252,6 @@ def PrintFieldValue(field, value, out, indent=0, as_utf8=False,
     out.write('{1:{0}}'.format(float_format, value))
   else:
     out.write(str(value))
-
-
-def _ParseOrMerge(lines, message, allow_multiple_scalars):
-  """Converts an ASCII representation of a protocol message into a message.
-
-  Args:
-    lines: Lines of a message's ASCII representation.
-    message: A protocol buffer message to merge into.
-    allow_multiple_scalars: Determines if repeated values for a non-repeated
-      field are permitted, e.g., the string "foo: 1 foo: 2" for a
-      required/optional field named "foo".
-
-  Raises:
-    ParseError: On ASCII parsing problems.
-  """
-  tokenizer = _Tokenizer(lines)
-  while not tokenizer.AtEnd():
-    _MergeField(tokenizer, message, allow_multiple_scalars)
 
 
 def Parse(text, message):
@@ -299,6 +324,24 @@ def MergeLines(lines, message):
   return message
 
 
+def _ParseOrMerge(lines, message, allow_multiple_scalars):
+  """Converts an ASCII representation of a protocol message into a message.
+
+  Args:
+    lines: Lines of a message's ASCII representation.
+    message: A protocol buffer message to merge into.
+    allow_multiple_scalars: Determines if repeated values for a non-repeated
+      field are permitted, e.g., the string "foo: 1 foo: 2" for a
+      required/optional field named "foo".
+
+  Raises:
+    ParseError: On ASCII parsing problems.
+  """
+  tokenizer = _Tokenizer(lines)
+  while not tokenizer.AtEnd():
+    _MergeField(tokenizer, message, allow_multiple_scalars)
+
+
 def _MergeField(tokenizer, message, allow_multiple_scalars):
   """Merges a single protocol message field into a message.
 
@@ -313,6 +356,11 @@ def _MergeField(tokenizer, message, allow_multiple_scalars):
     ParseError: In case of ASCII parsing problems.
   """
   message_descriptor = message.DESCRIPTOR
+  if (hasattr(message_descriptor, 'syntax') and
+      message_descriptor.syntax == 'proto3'):
+    # Proto3 doesn't represent presence so we can't test if multiple
+    # scalars have occurred.  We have to allow them.
+    allow_multiple_scalars = True
   if tokenizer.TryConsume('['):
     name = [tokenizer.ConsumeIdentifier()]
     while tokenizer.TryConsume('.'):
@@ -356,6 +404,7 @@ def _MergeField(tokenizer, message, allow_multiple_scalars):
               message_descriptor.full_name, name))
 
   if field.cpp_type == descriptor.FieldDescriptor.CPPTYPE_MESSAGE:
+    is_map_entry = _IsMapEntry(field)
     tokenizer.TryConsume(':')
 
     if tokenizer.TryConsume('<'):
@@ -367,6 +416,8 @@ def _MergeField(tokenizer, message, allow_multiple_scalars):
     if field.label == descriptor.FieldDescriptor.LABEL_REPEATED:
       if field.is_extension:
         sub_message = message.Extensions[field].add()
+      elif is_map_entry:
+        sub_message = field.message_type._concrete_class()
       else:
         sub_message = getattr(message, field.name).add()
     else:
@@ -380,6 +431,14 @@ def _MergeField(tokenizer, message, allow_multiple_scalars):
       if tokenizer.AtEnd():
         raise tokenizer.ParseErrorPreviousToken('Expected "%s".' % (end_token))
       _MergeField(tokenizer, sub_message, allow_multiple_scalars)
+
+    if is_map_entry:
+      value_cpptype = field.message_type.fields_by_name['value'].cpp_type
+      if value_cpptype == descriptor.FieldDescriptor.CPPTYPE_MESSAGE:
+        value = getattr(message, field.name)[sub_message.key]
+        value.MergeFrom(sub_message.value)
+      else:
+        getattr(message, field.name)[sub_message.key] = sub_message.value
   else:
     _MergeScalarField(tokenizer, message, field, allow_multiple_scalars)
 
@@ -499,7 +558,7 @@ class _Tokenizer(object):
   def _PopLine(self):
     while len(self._current_line) <= self._column:
       try:
-        self._current_line = self._lines.next()
+        self._current_line = next(self._lines)
       except StopIteration:
         self._current_line = ''
         self._more_lines = False
@@ -665,7 +724,7 @@ class _Tokenizer(object):
     """
     the_bytes = self.ConsumeByteString()
     try:
-      return unicode(the_bytes, 'utf-8')
+      return six.text_type(the_bytes, 'utf-8')
     except UnicodeDecodeError as e:
       raise self._StringParseError(e)
 
@@ -681,8 +740,7 @@ class _Tokenizer(object):
     the_list = [self._ConsumeSingleByteString()]
     while self.token and self.token[0] in ('\'', '"'):
       the_list.append(self._ConsumeSingleByteString())
-    return ''.encode('latin1').join(the_list)  ##PY25
-##!PY25    return b''.join(the_list)
+    return b''.join(the_list)
 
   def _ConsumeSingleByteString(self):
     """Consume one token of a string literal.
@@ -690,13 +748,16 @@ class _Tokenizer(object):
     String literals (whether bytes or text) can come in multiple adjacent
     tokens which are automatically concatenated, like in C or Python.  This
     method only consumes one token.
+
+    Raises:
+      ParseError: When the wrong format data is found.
     """
     text = self.token
     if len(text) < 1 or text[0] not in ('\'', '"'):
-      raise self._ParseError('Expected string.')
+      raise self._ParseError('Expected string but found: %r' % (text,))
 
     if len(text) < 2 or text[-1] != text[0]:
-      raise self._ParseError('String missing ending quote.')
+      raise self._ParseError('String missing ending quote: %r' % (text,))
 
     try:
       result = text_encoding.CUnescape(text[1:-1])
@@ -773,7 +834,7 @@ def ParseInteger(text, is_signed=False, is_long=False):
     # alternate implementations where the distinction is more significant
     # (e.g. the C++ implementation) simpler.
     if is_long:
-      result = long(text, 0)
+      result = int(text, 0)
     else:
       result = int(text, 0)
   except ValueError:
