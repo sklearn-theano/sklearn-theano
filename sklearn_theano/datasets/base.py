@@ -26,13 +26,21 @@ def get_dataset_dir(dataset_name, data_dir=None, folder=None, create_dir=True):
     return data_dir
 
 
-def download(url, server_fname, local_fname=None, progress_update_percentage=5):
+def download(url, server_fname, local_fname=None, progress_update_percentage=5,
+             bypass_certificate_check=False):
     """
     An internet download utility modified from
     http://stackoverflow.com/questions/22676/
     how-do-i-download-a-file-over-http-using-python/22776#22776
     """
-    u = urllib.urlopen(url)
+    if bypass_certificate_check:
+        import ssl
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        u = urllib.urlopen(url, context=ctx)
+    else:
+        u = urllib.urlopen(url)
     if local_fname is None:
         local_fname = server_fname
     full_path = local_fname

@@ -1,11 +1,18 @@
 """Makes .caffemodel files readable for sklearn-theano"""
+# Authors: Michael Eickenberg
+#          Kyle Kastner
+#          Erfan Noury
+#          Li Yao
+# License: BSD 3 Clause
 from __future__ import print_function
 import os
 import numpy as np
 from collections import OrderedDict
-import theano
 import theano.tensor as T
 from ...datasets import get_dataset_dir, download
+from sklearn_theano.base import Convolution, Relu, LRN, Feedforward, ZeroPad
+from sklearn_theano.base import CaffePool
+import warnings
 
 
 def _get_caffe_dir():
@@ -23,8 +30,8 @@ def _get_caffe_dir():
 
 
 def _compile_caffe_protobuf(caffe_proto=None,
-                           proto_src_dir=None,
-                           python_out_dir=None):
+                            proto_src_dir=None,
+                            python_out_dir=None):
     """Compiles protocol buffer to python_out_dir"""
 
     if caffe_proto is None:
@@ -50,7 +57,7 @@ def _compile_caffe_protobuf(caffe_proto=None,
             #                  "/home/user/caffe/src/caffe/proto/caffe.proto")
         else:
             caffe_proto = os.path.join(caffe_dir, "src", "caffe", "proto",
-                                  "caffe.proto")
+                                       "caffe.proto")
     if not os.path.exists(caffe_proto):
         raise ValueError(
             ("Could not find {pf}. Please specify the correct"
@@ -135,6 +142,7 @@ LAYER_PROPERTIES = dict(
     CONCAT=(('concat_param', 'concat_dim'),),
     INNER_PRODUCT=('blobs',),
     SOFTMAX_LOSS=None,
+    SOFTMAX=None,
     DROPOUT=None
 )
 
@@ -152,7 +160,7 @@ def _get_property(obj, property_path):
 
 
 def _parse_caffe_model(caffe_model):
-
+    warnings.warn("Caching parse for caffemodel, this may take some time")
     caffe_pb2 = _get_caffe_pb2()  # need to remove this dependence on pb here
     try:
         _layer_types = caffe_pb2.LayerParameter.LayerType.items()
@@ -167,11 +175,22 @@ def _parse_caffe_model(caffe_model):
     if not hasattr(caffe_model, "layers"):
         # Consider it a filename
         caffe_model = _open_caffe_model(caffe_model)
+
     layers_raw = caffe_model.layers
     parsed = []
-    for layer in layers_raw:
+
+    for n, layer in enumerate(layers_raw):
         # standard properties
         ltype = layer_types[layer.type]
+        if n == 0 and ltype != 'DATA':
+            warnings.warn("Caffemodel doesn't start with DATA - adding")
+            first_layer_descriptor = dict(
+                type='DATA',
+                name='data',
+                top_blobs=('data',),
+                bottom_blobs=tuple())
+            parsed.append(first_layer_descriptor)
+
         layer_descriptor = dict(type=ltype,
                                 name=layer.name,
                                 top_blobs=tuple(layer.top),
@@ -192,22 +211,17 @@ def _parse_caffe_model(caffe_model):
     return parsed
 
 
-from sklearn_theano.base import (Convolution, Relu, MaxPool, FancyMaxPool,
-                                 LRN, Feedforward, ZeroPad,
-                                 CaffePool)
-
-
-def parse_caffe_model(caffe_model, float_dtype='float32', verbose=0):
-
+def parse_caffe_model(caffe_model, convert_fc_to_conv=True,
+                      float_dtype='float32', verbose=0):
     if isinstance(caffe_model, str) or not isinstance(caffe_model, list):
         parsed_caffe_model = _parse_caffe_model(caffe_model)
     else:
         parsed_caffe_model = caffe_model
 
-
     layers = OrderedDict()
     inputs = OrderedDict()
     blobs = OrderedDict()
+    params = OrderedDict()
 
     for i, layer in enumerate(parsed_caffe_model):
         layer_type = layer['type']
@@ -267,6 +281,10 @@ def parse_caffe_model(caffe_model, float_dtype='float32', verbose=0):
             #                                     ::subsample[1]]
 
             blobs[top_blobs[0]] = expression
+
+            params[layer_name + '_conv_W'] = convolution.convolution_filter_
+            params[layer_name + '_conv_b'] = convolution.biases_
+
         elif layer_type == "RELU":
             # RELU layers take input from bottom_blobs, set everything
             # negative to zero and write the result to top_blobs
@@ -306,7 +324,7 @@ def parse_caffe_model(caffe_model, float_dtype='float32', verbose=0):
             # DROPOUT may figure in some networks, but it is only relevant
             # at the learning stage, not at the prediction stage.
             pass
-        elif layer_type == "SOFTMAX_LOSS":
+        elif layer_type in ["SOFTMAX_LOSS", "SOFTMAX"]:
             softmax_input = blobs[bottom_blobs[0]]
             # have to write our own softmax expression, because of shape
             # issues
@@ -329,7 +347,7 @@ def parse_caffe_model(caffe_model, float_dtype='float32', verbose=0):
             lrn_input = blobs[bottom_blobs[0]]
             lrn_factor = layer['lrn_param__alpha']
             lrn_exponent = layer['lrn_param__beta']
-            axis = {0:'channels'}[layer['lrn_param__norm_region']]
+            axis = {0: 'channels'}[layer['lrn_param__norm_region']]
             nsize = layer['lrn_param__local_size']
             lrn = LRN(nsize, lrn_factor, lrn_exponent, axis=axis)
             lrn._build_expression(lrn_input)
@@ -346,15 +364,26 @@ def parse_caffe_model(caffe_model, float_dtype='float32', verbose=0):
             weights = layer_blobs[0].astype(float_dtype)
             biases = layer_blobs[1].astype(float_dtype).squeeze()
             fully_connected_input = blobs[bottom_blobs[0]]
-            # fc_layer = Feedforward(weights, biases, activation=None)
-            fc_layer = Convolution(weights.transpose((2, 3, 0, 1)), biases,
-                                   activation=None)
+            if not convert_fc_to_conv:
+                if fully_connected_input.ndim == 4:
+                    m_, t_, x_, y_ = fully_connected_input.shape
+                    fully_connected_input = fully_connected_input.reshape(
+                        (m_, t_ * x_ * y_))
+                fc_layer = Feedforward(weights.squeeze().T, biases,
+                                       activation=None)
+                params[layer_name + '_fc_W'] = fc_layer.weights
+                if fc_layer.biases is not None:
+                    params[layer_name + '_fc_b'] = fc_layer.biases
+            else:
+                fc_layer = Convolution(weights.transpose((2, 3, 0, 1)), biases,
+                                       activation=None)
+                params[layer_name + '_conv_W'] = convolution.convolution_filter_
+                params[layer_name + '_conv_b'] = convolution.biases_
+
             fc_layer._build_expression(fully_connected_input)
             layers[layer_name] = fc_layer
             blobs[top_blobs[0]] = fc_layer.expression_
         else:
             raise ValueError('layer type %s is not known to sklearn-theano'
                              % layer_type)
-    return layers, blobs, inputs
-
-
+    return layers, blobs, inputs, params

@@ -86,7 +86,7 @@ def create_theano_expressions(model=None, verbose=0):
     if model is None:
         model = fetch_googlenet_architecture()
 
-    layers, blobs, inputs = parse_caffe_model(model, verbose=verbose)
+    layers, blobs, inputs, params = parse_caffe_model(model, verbose=verbose)
     data_input = inputs['data']
     return blobs, data_input
 
