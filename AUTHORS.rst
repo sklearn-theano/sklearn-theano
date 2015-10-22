@@ -1,6 +1,5 @@
 .. -*- mode: rst -*-
 
-
 People
 ------
 

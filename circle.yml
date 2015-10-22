@@ -1,0 +1,20 @@
+machine:
+  environment:
+    # We need to set this variable to let python see the package installed through apt-get
+    PYTHONPATH: "/usr/lib/python2.7/dist-packages:/home/ubuntu/.local/lib/python2.7/site-packages/"
+dependencies:
+  cache_directories:
+    # - "~/sklearn_theano_data"
+    # - "~/sklearn-theano.github.io"
+    - "~/download"
+  override:
+    - ./build_tools/circle/build_doc.sh
+test:
+  # Grep error on the documentation
+  override:
+    - cat ~/log.txt && if grep -q "Traceback (most recent call last):" ~/log.txt; then false; else true; fi
+general:
+  # Open the doc to the API
+  artifacts:
+    - "doc/_build/html"
+    - "~/log.txt"
